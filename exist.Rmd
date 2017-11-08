@@ -1,0 +1,296 @@
+
+### Data Extraction
+#### Python Extraction Code
+
+To keep it analysis for existing users comparable to the new profile analysis,
+if a profile 
+
+- updated to Firefox Release 56 between August 8th, 2017 and 14 days  thereafter,
+- they were on some version before 56
+
+then we have an existing profile. We take the three weeks before they
+updated and the three weeks after they update. 
+
+
+```{python eval=FALSE}
+import sys
+import datetime
+import random
+import subprocess
+import mozillametricstools.common.functions as mozfun
+
+from pyspark.sql import SparkSession
+spark = SparkSession.builder.getOrCreate()
+ms = spark.read.option("mergeSchema", "true").\
+     parquet("s3://telemetry-parquet/main_summary/v4")
+ms.createOrReplaceTempView('ms')
+```
+
+The base extraction function
+
+```{python eval=FALSE}
+import mozillametricstools.common.functions as mozfun
+mozfun.register_udf(sqlContext
+                    , lambda arr:  sum(arr) if arr else 0, "array_sum"
+                    , pyspark.sql.types.IntegerType())
+
+def base(minSubmission, maxSubmission,sampleid):
+    a= spark.sql("""
+    select 
+    client_id as cid,
+    from_unixtime(unix_timestamp(submission_date_s3,'yyyyMMdd'),'yyyy-MM-dd') as date,
+    date_format(date_add('1970-01-01',profile_creation_date),'yyyy-MM-dd') as pcd,
+    app_version as version,
+    count(*) as ns,
+    sum(subsession_length)/3600 as th,
+    sum(active_ticks*5/3600) as ah,
+    sum(case 
+        when search_counts is not null then array_sum(search_counts.count) else 0 
+    end)  as tsrch,
+    sum(coalesce(scalar_parent_browser_engagement_unique_domains_count,0)) as tdom,
+    sum(coalesce(scalar_parent_browser_engagement_total_uri_count,0)) as turi,
+    sum(coalesce(scalar_parent_browser_engagement_tab_open_event_count,0) +
+        coalesce(scalar_parent_browser_engagement_window_open_event_count,0)) as ttabwin,
+    sum(coalesce(crash_submit_success_main,0)) as cm,
+    sum(coalesce(crashes_detected_content,0) - coalesce(shutdown_kill,0)) as cc,
+    sum(coalesce(crashes_detected_plugin,0) + coalesce(crashes_detected_gmplugin,0)) as cp
+    from ms
+    where
+    submission_date_s3 >= '{minSubmission}' 
+    AND submission_date_s3 <= '{maxSubmission}' 
+    AND normalized_channel = 'release'
+    AND app_name = 'Firefox'
+    AND sample_id in ('{sampleid}')
+    group by 1,2,3,4
+    """.format( minSubmission=minSubmission, maxSubmission=maxSubmission,sampleid=sampleid))
+    a.createOrReplaceTempView("base")
+    return(a)
+
+```
+
+**Filter 1**, we now want profiles from `base` who *updated* from a version
+before `V` to `V`. See the 'having' clause.
+
+```{python eval=FALSE}
+def filter1(toVersion):
+    ex1=spark.sql("""
+    select 
+    cid,
+    min(case when substring(version,1,2)='{toVersion}' then date else '2070-01-01' end) as dateUpdated,
+    (case when max(substring(version,1,2))>='{toVersion}' then 1 else 0 end) as didUpdateToVersionGE_V,
+    (case when min(substring(version,1,2))<'{toVersion}' then 1 else 0 end) as wasonVersionLT_V
+    from base
+    group by cid
+    having didUpdateToVersionGE_V=1 and  wasonVersionLT_V=1
+    """.format( toVersion=toVersion))
+    ex1.createOrReplaceTempView("ex1")
+    base2 = spark.sql(""" select base.*, ex1.dateUpdated from ex1 left join base where ex1.cid=base.cid""" )
+    base2.createOrReplaceTempView("base2")
+    return base2
+
+```
+
+**Filter 2**, we want profiles that updated to this version `V` during the time
+period `[D1,D1+14]`.
+
+```{python eval=FALSE}
+def filter2(toVersionLabel,d1,d2,dbefore, dafter):
+    base3=spark.sql("""
+    select
+    'exist' as persona,
+    '{toVersionLabel}' as cohort,
+    *,
+    datediff(
+    from_unixtime(unix_timestamp(date, 'yyyy-MM-dd')),
+    from_unixtime(unix_timestamp(dateUpdated, 'yyyy-MM-dd'))
+    ) AS daysSinceUpdate
+    from base2
+    where dateUpdated >= '{d1}' and dateUpdated<= '{d2}'
+    having daysSinceUpdate >= -{dbefore} and daysSinceUpdate<={dafter}
+    """.format(toVersionLabel=toVersionLabel, d1 = d1, d2=d2,dbefore=dbefore, dafter=dafter))
+    base3.createOrReplaceTempView("base3")
+    return base3
+```
+
+Tie it all together
+
+```{python eval=FALSE}
+def prePost(sampleid,toVersion, toVersionLabel, d1,d2,minSubmission,maxSubmission,dbefore, dafter):
+    base(minSubmission,maxSubmission,sampleid)
+    filter1(toVersion)
+    filter2(toVersionLabel,d1,d2,dbefore, dafter)
+    base4 = spark.sql(""" select *,
+    case when (cm+cc+cp) > 0  then 1 else 0 end as crq,
+    case when th>0 and turi>0 then 1 else 0 end as active,
+    case when date>=dateUpdated then 'postUpdate' else 'preUpdate' end as period
+    from base3 where th>=0""")
+    base4.createOrReplaceTempView("base4")
+    return base4
+```
+
+For this report,
+
+```{python eval=FALSE}
+
+releases = {
+    '54': datetime.datetime.strptime("2017-06-13","%Y-%m-%d").date(),
+    '55': datetime.datetime.strptime("2017-08-08","%Y-%m-%d").date(),
+    '56': datetime.datetime.strptime("2017-09-25","%Y-%m-%d").date(),
+    '57': datetime.datetime.strptime("2017-11-15","%Y-%m-%d").date(),
+    'origin': datetime.datetime.strptime("1970-01-01","%Y-%m-%d").date()
+}
+
+v55 = prePost('42',toVersion="55",toVersionLabel="55",
+              d1 = releases['55'].strftime("%Y-%m-%d"),
+              d2 = (releases['55']+ datetime.timedelta(days=14)).strftime("%Y-%m-%d"),
+              minSubmission = (releases['55']+ datetime.timedelta(days=-21)).strftime("%Y%m%d"),
+              maxSubmission = (releases['55']+ datetime.timedelta(days=21+14)).strftime("%Y%m%d"),
+              dbefore=28,dafter=28)
+
+v56 = prePost('43',toVersion="56",toVersionLabel="56",
+              d1 = releases['56'].strftime("%Y-%m-%d"),
+              d2 = (releases['56'] + datetime.timedelta(days=14)).strftime("%Y-%m-%d"),
+              minSubmission = (releases['56']+ datetime.timedelta(days=-21)).strftime("%Y%m%d"),
+              maxSubmission = (releases['56']+ datetime.timedelta(days=21+14)).strftime("%Y%m%d"),
+              dbefore=28,dafter=28)
+
+cohorts = v56.union(v55)
+cohorts = cohorts.cache()
+cohorts.createOrReplaceTempView("cohorts")
+
+## Saving the data
+import subprocess
+O = "s3://mozilla-metrics/user/sguha/tmp/betaexist"
+subprocess.call(["aws", "s3", "rm", "--recursive", O])
+write = pyspark.sql.DataFrameWriter(cohorts)
+write.parquet(path=O ,mode='overwrite')
+## Reading the data
+cohorts  = spark.read.option("mergeSchema", "true").parquet(O)
+cohorts.createOrReplaceTempView("cohorts")
+cohorts = cohorts.cache()
+```
+        
+        
+We now need to prepare little data sets.  To begin with a data set of cohort size
+
+
+```{python eval=FALSE}
+ cohortsize = spark.sql("""select
+ cohort,
+ count(distinct(cid)) as n
+ from cohorts group by cohort""")
+```
+
+To begin with a data set for Retention and Crash.
+
+```{python eval=FALSE}
+retention = spark.sql("""
+select cid, cohort,
+sum(case when daysSinceUpdate <0 then th else 0 end) as th,
+sum(case when daysSinceUpdate <0 then ah else 0 end) as ah,
+max(case when daysSinceUpdate >=0 then active else 0 end) as active
+from cohorts
+group by 1,2
+""")
+
+crash = spark.sql("""
+select cid, cohort,
+sum(case when daysSinceUpdate <0 then th else 0 end) as th,
+sum(case when daysSinceUpdate <0 then ah else 0 end) as ah,
+max(case when daysSinceUpdate <0 then crq else 0 end) as crashedpre,
+max(case when daysSinceUpdate >=0 then crq else 0 end) as crashedpost
+from cohorts
+group by 1,2
+""")
+
+```
+
+For the other measures:  session hours, active hours, Uris visited, domains
+visited, tabs opened, and searches during the entire period.
+
+- filter out rows for which measure is greater than the 99.9% (for that measure)
+- add `C = 1/60` to the denominator for things like domain/per hour/profile (since we often get NaN)
+
+
+```{python eval=FALSE}
+pcut = [0.999]
+def cut(v):
+    return cohorts.approxQuantile(v,pcut,0.001)
+
+C = 1/60.0
+thCut = cut('th')
+ahCut =cut('ah')
+searchCut = cut('tsrch')
+domCut = cut('tdom')
+uriCut = cut('turi')
+tabCut = cut('ttabwin')
+
+thdf  = spark.sql("""
+with a as (select cid, cohort, th, daysSinceUpdate from cohorts where th < {})
+select 
+cid,
+cohort,
+sum(case when daysSinceUpdate<0 then 1 else 0 end) as prendays,
+sum(case when daysSinceUpdate>=0 then 1 else 0 end) as postdays,
+sum(case when daysSinceUpdate<0 then th else 0 end) as preth,
+sum(case when daysSinceUpdate>=0 then th else 0 end) as postth
+from a 
+group by  cid, cohort
+""".format(thCut[0]))
+
+def getAverageForMeasure(varname, varcut,thcut=thCut,cc=C):
+    x=spark.sql("""
+    with a as (select cid, cohort, th,{varname}, daysSinceUpdate from cohorts where th < {thcut} and {varname} < {varcut})
+    select 
+    cid,
+    cohort,
+    sum(case when daysSinceUpdate<0 then 1 else 0 end) as prendays,
+    sum(case when daysSinceUpdate>=0 then 1 else 0 end) as postdays,
+    sum(case when daysSinceUpdate<0 then th else 0 end) as preth,
+    sum(case when daysSinceUpdate>=0 then th else 0 end) as postth,
+    sum(case when daysSinceUpdate<0 then {varname} else 0 end) as prex,
+    sum(case when daysSinceUpdate>=0 then {varname} else 0 end) as postx,
+    mean(case when daysSinceUpdate<0 then {varname}/({cc}+th) else 0 end) as prexPerHr,
+    mean(case when daysSinceUpdate>=0 then {varname}/({cc}+th) else 0 end) as postxPerHr
+    from a group by cid, cohort
+    """.format(varname =varname ,varcut = varcut,thcut=thCut[0], cc=C))
+    return(x)
+
+intensdf   = getAverageForMeasure('ah',varcut=ahCut[0])
+srchdf     = getAverageForMeasure('tsrch',varcut=searchCut[0])
+domdf      = getAverageForMeasure('tdom',varcut=domCut[0])
+tabdf      = getAverageForMeasure('tdom',varcut=tabCut[0])
+uridf      = getAverageForMeasure('tdom',varcut=uriCut[0])
+
+
+cmCut     = cut('cm')
+cpCut     = cut('cp')
+ccCut     = cut('cc')
+cmdf      = getAverageForMeasure('cm',varcut=cmCut[0])
+cpdf      = getAverageForMeasure('cp',varcut=cpCut[0])
+ccdf      = getAverageForMeasure('cc',varcut=ccCut[0])
+
+
+## Datasets Are
+## retention
+## crash
+## intensdf
+## domdf
+## tabdf
+## uridf
+## cmdf
+## cpdf
+## ccdf
+
+## Saving the data
+import subprocess
+for i in ["retention","crash","thdf","intensdf",'domdf','tabdf','uridf','cmdf','cpdf','ccdf']:
+    print(i)
+    O = "s3://mozilla-metrics/user/sguha/tmp/56vs57exist/{}".format(i)
+    subprocess.call(["aws", "s3", "rm", "--recursive", O])
+    write = pyspark.sql.DataFrameWriter(globals()[i].coalesce(1))
+    write.csv(path=O ,mode='overwrite',compression='none',sep=',',nullValue='NA',header=True)
+
+    
+
+```
