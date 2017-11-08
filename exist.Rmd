@@ -143,14 +143,14 @@ releases = {
 v55 = prePost('42',toVersion="55",toVersionLabel="55",
               d1 = releases['55'].strftime("%Y-%m-%d"),
               d2 = (releases['55']+ datetime.timedelta(days=14)).strftime("%Y-%m-%d"),
-              minSubmission = (releases['55']+ datetime.timedelta(days=-21)).strftime("%Y%m%d"),
+              minSubmission = (releases['55']+ datetime.timedelta(days=-28)).strftime("%Y%m%d"),
               maxSubmission = (releases['55']+ datetime.timedelta(days=21+14)).strftime("%Y%m%d"),
               dbefore=28,dafter=28)
 
 v56 = prePost('43',toVersion="56",toVersionLabel="56",
               d1 = releases['56'].strftime("%Y-%m-%d"),
               d2 = (releases['56'] + datetime.timedelta(days=14)).strftime("%Y-%m-%d"),
-              minSubmission = (releases['56']+ datetime.timedelta(days=-21)).strftime("%Y%m%d"),
+              minSubmission = (releases['56']+ datetime.timedelta(days=-28)).strftime("%Y%m%d"),
               maxSubmission = (releases['56']+ datetime.timedelta(days=21+14)).strftime("%Y%m%d"),
               dbefore=28,dafter=28)
 
@@ -246,6 +246,8 @@ def getAverageForMeasure(varname, varcut,thcut=thCut,cc=C):
     cohort,
     sum(case when daysSinceUpdate<0 then 1 else 0 end) as prendays,
     sum(case when daysSinceUpdate>=0 then 1 else 0 end) as postdays,
+    sum(case when daysSinceUpdate<0 then ah else 0 end) as preah,
+    sum(case when daysSinceUpdate>=0 then ah else 0 end) as postah,
     sum(case when daysSinceUpdate<0 then th else 0 end) as preth,
     sum(case when daysSinceUpdate>=0 then th else 0 end) as postth,
     sum(case when daysSinceUpdate<0 then {varname} else 0 end) as prex,
@@ -256,7 +258,7 @@ def getAverageForMeasure(varname, varcut,thcut=thCut,cc=C):
     """.format(varname =varname ,varcut = varcut,thcut=thCut[0], cc=C))
     return(x)
 
-intensdf   = getAverageForMeasure('ah',varcut=ahCut[0])
+intensdf   = getAverageForMeasure('ah',varcut=ahCut[0]) ## intens is derivd in the query
 srchdf     = getAverageForMeasure('tsrch',varcut=searchCut[0])
 domdf      = getAverageForMeasure('tdom',varcut=domCut[0])
 tabdf      = getAverageForMeasure('tdom',varcut=tabCut[0])

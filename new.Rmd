@@ -20,14 +20,14 @@ We know that Firefox Release 56 was released on August 8, 2017 and Firefox Beta 
 was released on September 25, 2017.
 
 What is a random sample of **new release 56 users**? Anybody who downloaded version 56
-between August 8, 2017 and September 24, 2017. The days they were on beta 56 would
+between August 8, 2017 and September 24, 2017. The days they were on release 56 would
 correspond to their release 56 usage. Similarly for 57. We restrict out download
 days to the time when 56 was the most recent version available as opposed to
 including new users of 56 when 57 was available. 
 
 However to get results out in a timely manner, we'll focus on new profiles
-created in first two weeks of release of the corresponding beta and two weeks of
-data thereafter.
+created in first two weeks of release of the corresponding beta and three weeks
+of their usage data (from the time of their created profile).
 
 
 
@@ -112,16 +112,17 @@ releases = {
     '57': datetime.datetime.strptime("2017-11-15","%Y-%m-%d").date(),
     'origin': datetime.datetime.strptime("1970-01-01","%Y-%m-%d").date()
 }
+## 21+14 = for profiles created on the 14th day ...
 cohort56 = newprofiles('55.0', 
                        minpcd=(releases['56']-releases['origin']).days,
                        maxpcd=(releases['56']-releases['origin']).days+14,
                        minsubmission=releases['56'].strftime("%Y%m%d"),
-                       maxsubmission=(releases['56']+datetime.timedelta(days=28-1)).strftime("%Y%m%d"))
+                       maxsubmission=(releases['56']+datetime.timedelta(days=21+14)).strftime("%Y%m%d"))
 cohort57 = newprofiles('56.0', 
                        minpcd=(releases['57']-releases['origin']).days,
                        maxpcd=(releases['57']-releases['origin']).days+14,
                        minsubmission=releases['57'].strftime("%Y%m%d"),
-                       maxsubmission=(releases['57']+datetime.timedelta(days=28-1)).strftime("%Y%m%d"))
+                       maxsubmission=(releases['57']+datetime.timedelta(days=21+14)).strftime("%Y%m%d"))
 cohorts = cohort57.union(cohort56)
 cohorts = cohorts.cache()
 cohorts.createOrReplaceTempView("cohorts")
@@ -139,7 +140,7 @@ cohorts = cohorts.cache()
 
 ```
 
-##### 1.Create record of new profiles in each cohort
+**Create record** of new profiles in each cohort
 
 ```{python eval=FALSE}
 newprofilesByCohort = spark.sql(
@@ -151,7 +152,7 @@ newprofilesByCohort = spark.sql(
 ```
 
 
-##### 2.Create a database of client_id, cohort ...
+**Create a database** of client_id, cohort ...
 and whether profile was active in week 1 or week 2 (not cumulative). This and
 (1) are enough for the retention bit
  
@@ -161,7 +162,7 @@ activeProfiles = spark.sql(""" select cid, cohort,
  by 1,2,3 """)
 ```
 
-##### 3.For measures such session length, active session length, ...
+**For measures such as **  session length, active session length, ...
 intensity, domains, uris, tabsopenend, we need to look at the average value per
 profile cumulative till week i. However,
 
