@@ -188,7 +188,10 @@ retention = spark.sql("""
 select cid, cohort,
 sum(case when daysSinceUpdate <0 then th else 0 end) as th,
 sum(case when daysSinceUpdate <0 then ah else 0 end) as ah,
-max(case when daysSinceUpdate >=0 then active else 0 end) as active
+max(case when daysSinceUpdate >=0 then active else 0 end) as activeAll,
+max(case when daysSinceUpdate >=0 and daysSinceUpdate<7 then active else 0 end) as active7,
+max(case when daysSinceUpdate >=7 and daysSinceUpdate<14 then active else 0 end) as active14,
+max(case when daysSinceUpdate >=14 and daysSinceUpdate<21 then active else 0 end) as active21
 from cohorts
 group by 1,2
 """)
@@ -197,8 +200,9 @@ crash = spark.sql("""
 select cid, cohort,
 sum(case when daysSinceUpdate <0 then th else 0 end) as th,
 sum(case when daysSinceUpdate <0 then ah else 0 end) as ah,
-max(case when daysSinceUpdate <0 then crq else 0 end) as crashedpre,
-max(case when daysSinceUpdate >=0 then crq else 0 end) as crashedpost
+max(case when daysSinceUpdate <0 then crq else 0 end) as crashedpreAll,
+max(case when daysSinceUpdate >=0 and daysSinceUpdate<7 then crq else 0 end) as crashedpost7,
+max(case when daysSinceUpdate >=0 and daysSinceUpdate<14 then crq else 0 end) as crashedpost14
 from cohorts
 group by 1,2
 """)
