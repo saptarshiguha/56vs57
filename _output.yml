@@ -1,0 +1,16 @@
+bookdown::gitbook:
+  dev: png
+  css: css/styles.css
+  config:
+    toc:        
+      collapse: subsection
+      scroll_highlight: yes 
+      before: |
+        <li><a href="./">Firefox 57: Changes</a></li>
+      after: |
+        <li><a href="https://mozilla.org" target="_blank">A Mozilla Thing</a></li>
+    edit: https://github.com/saptarshiguha/56vs57/blob/master/%s
+    sharing: null
+      
+bookdown::html_chapters:
+  css: [css/styles.css, css/toc.css]

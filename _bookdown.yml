@@ -1,0 +1,13 @@
+book_filename: firefox57
+output_dir: /home/sguha/public_html/tmp/57changes
+delete_merged_file: true
+language:
+  label:
+    fig: "FIGURE "
+    tab: "TABLE "
+  ui:
+    edit: "Edit"
+chapter_name: "Chapter "
+rmd_files: ["index.Rmd","newprofiles_extract.Rmd","newprofiles_analysis.Rmd"]
+new_session: false
+

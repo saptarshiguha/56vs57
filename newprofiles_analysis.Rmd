@@ -1,0 +1,150 @@
+# Analysis of New Profiles
+
+```{r dataImport,eval=FALSE,cache=TRUE}
+readCSVAWS <- function(f){
+    system("rm -rf /tmp/x")
+    system(sprintf("aws s3 sync s3://mozilla-metrics/user/sguha/tmp/56vs57new/%s/ /tmp/x",f))
+    fread(list.files("/tmp/x/",full=TRUE,pattern='*.csv'))
+}
+
+newprofilesByCohort <- readCSVAWS("newprofilesByCohort")
+activeprofiles <- readCSVAWS("activeProfiles")
+crashprofiles <- readCSVAWS("crashprofiles")
+shdf <- readCSVAWS("shdf")
+intensdf <- readCSVAWS("intensdf")
+searchdf <- readCSVAWS("searchesdf")
+domdf <- readCSVAWS("domdf")
+uridf <- readCSVAWS("uridf")
+tabdf <- readCSVAWS("tabdf")
+tcdf <- readCSVAWS("tcdf")
+
+makeTable <- function(d, x,measure,pct=c("10"=0.1,"90"=0.9)){
+    suppressWarnings({
+        d2 <- d[, {
+            f <- list(measure=measure,Average=mean(get(x), trim=0.01/100/2))
+            for(i in seq_along(pct)){
+                f[[ sprintf("pct%s",names(pct)[[i]]) ]]  <- quantile(get(x),pct[[i]])
+            }
+            f
+            },by=cohort][order(cohort),]
+    d2
+    })
+}
+
+options(width=150)
+```
+
+## Acquisition
+
+Count of new profiles acquired in *one week since release date* (10% sample)
+
+```{r newProfileCount, cache=TRUE}
+
+invisible({
+    newprofilesByCohort[, ":="(minpcd = as.Date(minpcd, origin="1970-01-01"),
+                               maxpcd = as.Date(maxpcd,origin="1970-01-01"))]
+})
+library(boot)
+newprofilesByCohort
+```
+
+## Retention
+Percentage of profiles active in the first 7 days and the next 7 days. For 57,
+the 2nd week is grossly biased lower (mostly because plenty of new profiles
+don't have a second week present)
+
+
+```{r activeProfile,cache=TRUE}
+invisible({
+    activeprofiles <- activeprofiles[week<=1,]
+    activeCount <- activeprofiles[, list(actives=sum(activeIn)),by=list(week, cohort)][order(week,cohort),]
+    activeCount <- merge(activeCount,newprofilesByCohort,by='cohort')
+    activeCount[, ":="(propActive=actives/n)][order(week,cohort),]
+})
+activeCount[,list(cohort,week,Week1Retention=propActive)]
+
+```
+
+## Session Length
+Session length per profile per day for the first and second weeks
+
+```{r activeSession,cache=TRUE}
+shdf0 <- shdf[week<=1,]
+## shb1 <- boot(shdf0, R=REP,strata=shdf0$cohort,stat=function(d,i,pb){
+##     d0 <- d[i,]
+##     suppressWarnings(d2 <- d0[, list(x=mean(shavg, trim=0.01/100/2)),by=cohort][order(cohort),])
+##     pb$tick()
+##     d2$x
+## },pb=makePB(REP))
+##sh1 <- bci(shb1,measure='Week 1 hrs',names=newprofilesByCohort$cohort)
+makeTable(shdf0, measure="Week 1 Hrs/Profile",x="shavg")
+```
+
+## Intensity of Use
+
+Intensity of use of new profiles, which is the ratio of active time to total
+time. 
+
+```{r intens,cache=TRUE}
+intensdf0 <- intensdf[week<=1,]
+## intens1 <- boot(intensdf0, R=REP,strata=intensdf0$cohort,stat=function(d,i,pb){
+##     d0 <- d[i,]
+##     suppressWarnings(d2 <- d0[, list(x=mean(xm, trim=0.01/100/2)),by=cohort][order(cohort),])
+##     pb$tick()
+##     d2$x
+## },pb=makePB(REP))
+## intens1 <- bci(intens1,measure='Week 1 Intensity',names=newprofilesByCohort$cohort)
+makeTable(intensdf0,measure="Week1 1 Intensity of use",x="xm")
+```
+
+## Tabs  Opened
+
+```{r tabsOpened,cache=TRUE}
+tabdf0 <- tabdf[week<=1,]
+makeTable(tabdf0,measure="Week1 1 Tabs/Hour/Profile",x="xm")
+```
+
+## URIs Visited
+
+```{r uriOpened,cache=TRUE}
+uridf0 <- uridf[week<=1,]
+makeTable(uridf0,measure="Week1 1 URIs visited/Hour/Profile",x="xm")
+```
+
+## Searches
+
+```{r searchespened,cache=TRUE}
+searchdf0 <- searchdf[week<=1,]
+makeTable(searchdf0,measure="Week1 1 Searches made/Hour/Profile",x="xm")
+
+```
+
+## Proportion of Profiles Crashing
+
+```{r crashlik, cache=TRUE}
+crashprofiles <- crashprofiles[week<=1,]
+crashCount <- crashprofiles[, list(crashs=sum(crashedIn)),by=list(week, cohort)][order(week,cohort),]
+crashCount <- merge(crashCount,newprofilesByCohort,by='cohort')[, ":="(propCrash=crashs/n)][order(week,cohort),]
+crashCount[,list(cohort,week,Week1CrashProp=propCrash)]
+```
+
+## Crash Rate
+
+Total content (removing shutdowns) and main crashes per hour averaged across
+users.
+
+```{r crashR,cache=TRUE}
+tcdf0 <- tcdf[week<=1,]
+z <- makeTable(tcdf0,measure="Week1 1 Content and Main Crashes /1000 Hours/Profile",x="xm")
+z <- z[,":="(pct10=NULL, pct90=NULL,Average=Average*1000)]
+z
+```
+and for those who did crash
+```{r crashR2,cache=TRUE}
+z2 <- makeTable(tcdf0[xm>0,],measure="Week1 1 Content and Main Crashes /1000 Hours/Crashing Profile",x="xm"
+                ,pct=c('10'=0.1,'50'=0.5,'90'=0.9))
+z2 <- z2[,":="(pct10=pct10*1000,pct50=1000*pct50, pct90=pct90*1000,Average=Average*1000)]
+z2
+```
+
+
