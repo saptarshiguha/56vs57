@@ -63,12 +63,18 @@ h1.title {
   font-weight: 500;
 }
 
-.page-inner !important {
-  width:100%;
-  max-width:1200px;
-}
 
 
 #DataTables_Table_0 {
   white-space: nowrap;
+}
+
+
+
+
+.book .book-body .navigation {
+  min-width: 4%;
+}
+.book .book-body .page-wrapper .page-inner {
+  max-width: 1200px;
 }

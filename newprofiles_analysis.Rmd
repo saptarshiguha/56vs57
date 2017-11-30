@@ -31,7 +31,6 @@ makeTable <- function(d, x,measure,pct=c("10"=0.1,"90"=0.9)){
     })
 }
 
-options(width=150)
 ```
 
 ## Acquisition
@@ -39,7 +38,7 @@ options(width=150)
 Count of new profiles acquired in *one week since release date* (10% sample)
 
 ```{r newProfileCount, cache=TRUE}
-
+options(width=150)
 invisible({
     newprofilesByCohort[, ":="(minpcd = as.Date(minpcd, origin="1970-01-01"),
                                maxpcd = as.Date(maxpcd,origin="1970-01-01"))]
@@ -49,9 +48,7 @@ newprofilesByCohort
 ```
 
 ## Retention
-Percentage of profiles active in the first 7 days and the next 7 days. For 57,
-the 2nd week is grossly biased lower (mostly because plenty of new profiles
-don't have a second week present)
+Percentage of profiles active in the first 7 days and the next 7 days. 
 
 
 ```{r activeProfile,cache=TRUE}
