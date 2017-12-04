@@ -17,7 +17,6 @@ github-repo: saptarshiguha/56vs57
 ---
 
 # Introduction {#intro}
-
 Firefox 57 was launched on November 13. So many measurements happening. An
 [Impact Dashboard](https://strategy-and-insights.mozilla.com/topline-metrics/index.html) already
 exists, though this is more of 57 vs All.
