@@ -1,0 +1,26 @@
+# Baselines
+
+For context, the following figures are first week measures for new profiles.
+For example in the first figure, we plot the session length/day/profile against
+the day the profile was created. Overlaid is the a smooth line fitted to 7 day
+rolling averages. The dotted red lines correspond to version releases. Bear in
+mind that after a version is released between X and Y % of new profiles are on
+older versions (in the first week since profile creation).
+
+
+```{r sessionbase,cache=TRUE,dependson='newOn'}
+s1 <- d0[sh<=24 & pcd>='2017-01-01' & pcd<='2017-12-01' & date >=pcd  & date<=(pcd+6),]
+s1 <- s1[,{
+    ts <- sum(sh)
+    nd <- .N
+    list(s=if(nd==0) 0 else ts/nd)
+},by=list(pcd,cidf)][,list(s=mean(s)),by=pcd][order(pcd),]
+
+xyplot(s ~ pcd, xlab='Profile Creation Date', ylab='',
+       type=c('g','l'),scale=list(x=list(tick.num=25,cex=0.6,rot=45)),data=s1,col='#cccccc',
+       panel=function(x,y,...){
+           panel.xyplot(x,y,...)
+           y2=as.numeric(filter (y, rep(1,7)/7))
+           panel.loess(x,y2,type='l',col='black',span=0.25,lwd=1.5)
+       },title='Session Length(hr)/Profile/Day for the profiles first week')
+```

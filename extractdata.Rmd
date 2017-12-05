@@ -57,6 +57,7 @@ write.csv(path=O ,mode='overwrite',compression='none',sep=',',nullValue='NA',hea
 
 
 ## Modifying in R 
+
 ```{r include=FALSE}
 X=FALSE
 FAC <- 1000
@@ -143,11 +144,9 @@ newonv <- lapply(versions$version,function(v){
 newonv <- rbindlist(newonv)
 ```
 
-### New Profiles (not on a given version)
+## New Profiles In Version Release Period
 
-Same rules as above, except we dont care what version the profile came on. In
-effect we remove the condition that `version` equals a given `v` in the code
-above.
+Same as above but we dont care what version the profile was created on
 
 ```{r newOn,cache=TRUE,dependson='newOnversion',eval=X}
 newd <- lapply(versions$version,function(v){

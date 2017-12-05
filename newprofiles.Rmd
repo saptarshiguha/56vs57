@@ -136,5 +136,3 @@ This is the definition used by [https://www.arewestableyet.com/dashboard/]
 total profile hours. The interpretation is "choose a random profile weighted by
 the hours of use in the week, then the value below is their crash rate" (with
 the data i have i can’t compute the percentiles)
-
-
