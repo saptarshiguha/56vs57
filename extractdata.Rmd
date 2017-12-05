@@ -1,0 +1,185 @@
+# Extracting Data
+
+## From main summary
+
+
+We take  a 0.1% sample from all release Firefox profiles between 2016-08-01 till
+2017-12-02. The data is grouped by client id, profile creation date , date of
+activity and the version they were on.
+
+```{python eval=FALSE}
+
+st= """
+SELECT
+client_id as cid,
+date_format(date_add('1970-01-01', profile_creation_date),'yyyy-MM-dd') as pcd,
+substr(subsession_start_date,1,10) as date,
+substr(app_version,1,2) as version,
+sum(subsession_length / 60.0 / 60) AS sh,
+sum(active_ticks * 5 /3600.0) as ah,
+sum(coalesce(scalar_parent_browser_engagement_unique_domains_count,0))  as domainsvisited,
+sum(coalesce(scalar_parent_browser_engagement_total_uri_count,0))  AS uris,
+sum(coalesce(scalar_parent_browser_engagement_tab_open_event_count,0) +
+coalesce(scalar_parent_browser_engagement_window_open_event_count,0)) as tabsopened,
+sum(coalesce(crash_submit_success_main,0)) as cm,
+sum(coalesce(crashes_detected_content, 0))- sum(coalesce(shutdown_kill,0)) as cc,
+sum(coalesce(crashes_detected_plugin,0))+sum(coalesce(crashes_detected_gmplugin,0)) as cp,
+sum(case
+when search_counts is not null then array_sum(search_counts.count) else 0
+end)  as search
+FROM ms
+WHERE
+normalized_channel = 'release'
+and app_name = 'Firefox'
+and substr(subsession_start_date,1,10) >= '{minsubsession}' and substr(subsession_start_date,1,10)<='{maxsubsession}'
+and submission_date_s3 >= '{minsubsession}' and submission_date_s3 <= '{maxsubmission}'
+and sample_id = '23'
+and crc32(encode(client_id, 'UTF-8')) % 1000 < 100
+and subsession_length>=0
+and subsession_length<=86400
+group by 1,2,3,4
+""".format(
+    minsubmission='20160801',
+    maxsubmission='20171204',
+    minsubsession='2016-08-01',
+    maxsubsession='2017-12-04')
+ut=spark.sql(st)
+ut.createOrReplaceTempView ("ut")
+
+spark.sql("select count(*), count(distinct(cid)) from ut").collect()
+import subprocess
+O = "s3://mozilla-metrics/user/sguha/tmp/snapshot"
+subprocess.call(["aws", "s3", "rm", "--recursive", O])
+write = pyspark.sql.DataFrameWriter(ut.coalesce(1))
+write.csv(path=O ,mode='overwrite',compression='none',sep=',',nullValue='NA',header=True)
+
+```
+
+
+## Modifying in R 
+```{r include=FALSE}
+X=FALSE
+FAC <- 1000
+```
+
+I've found studying data using data tables and R is so much easier than creating
+small data sets in spark and python. A 0.1% sample is more than sufficient for
+these large scale analyses.
+
+
+*Download the data from S3*, and do some simple modifications. 
+
+```{r getdata,eval=FALSE,cache=TRUE}
+library(data.table)
+system("rm -rf /tmp/x")
+system(sprintf("aws s3 sync s3://mozilla-metrics/user/sguha/tmp/snapshot/ /tmp/x"))
+d0 <- fread(list.files("/tmp/x/",full=TRUE,pattern='*.csv'),
+            colClasses=c("character","date","date","character",
+                         "numeric","numeric","numeric","numeric",
+                         "numeric","numeric","numeric","numeric",
+                         "numeric"))
+d0 <- d0[pcd>='2016-01-01' & date>='2016-01-01' & pcd <='2018-12-31' & date<='2018-12-31',]
+d0 <- d0[!is.na(pcd) & !is.na(date),]
+d0[, ":="(date=as.Date(date), pcd=as.Date(pcd),version=as.integer(version),crash=cm+cc, cr=(cm+cc)>0)]
+d0[, cidf := as.integer(as.factor(cid))]
+setkey(d0, cidf,date,pcd)
+d0[, cid:=NULL]
+```
+
+## New Profiles
+
+### New Profiles on a Version
+
+*Create* a dataset with profiles that are *new* on a version and preserve the
+first 3 weeks of them being on the new version. We will first get the versions
+available to us. 
+
+```{r prodversion, cache=TRUE}
+library(rjson)
+download.file("https://product-details.mozilla.org/1.0/firefox_history_major_releases.json","/tmp/rel.json")
+versions <- fromJSON(file="/tmp/rel.json")
+versions <- data.table(version=as.numeric(substr(names(versions),1,2)), date=as.Date(unlist(versions)))[version>=49,]
+```
+
+The rules for these profiles are
+
+1. Their profile creation date is in the first seven days since version release
+2. The version they are created on is the version in question
+2. The proportion of profiles with data before PCD is very small (teensy like)
+3. We keep the first 3 weeks of their data
+
+Note, that these are not all new profiles on the time after release. New
+profiles in that time period can come from other versions.
+
+```{r newOnVersion,cache=TRUE,dependson='getdata',eval=X}
+newonv <- lapply(versions$version,function(v){
+    cat(sprintf("%s ",v))
+    reldate <- versions[version==v, c(beg=date,end=date+6)]
+    d1 <- d0[pcd %between% reldate,]
+    check <- merge(d0,d1[,list(d=1),by=cidf],by='cidf')[date<(pcd-1),][, list(date,pcd) ,by=cidf]
+    if((errpr <- length(unique(check$cidf))/length(unique(d1$cidf))*100)>0.5)
+        stop(sprintf("You have many profiles with dates of activity before the profile creation date: %s",errpr))
+    cat(sprintf(" bad data:%s\n",errpr))
+    C <- 1/60
+    d1 <- d1[date>=pcd,][, {
+        if( length(version[date>=pcd])>0 && version[date>=pcd][1]==v ){
+            list(pcd=pcd[1],version=v,release=reldate[1],
+                 daysSince = as.numeric(date -pcd[1]),
+                 sh=sh,
+                 ah=ah,
+                 dom = (domainsvisited),
+                 uris = (uris),
+                 tabs = (tabsopened),
+                 srch = (search),
+                 crash =(crash),
+                 cr = cr,
+                 active = sh>0 ,
+                 active2 = sh>0 & uris>0
+                 )
+        }
+    },by=cidf][daysSince<=21,]
+    d1
+}) 
+newonv <- rbindlist(newonv)
+```
+
+### New Profiles (not on a given version)
+
+Same rules as above, except we dont care what version the profile came on. In
+effect we remove the condition that `version` equals a given `v` in the code
+above.
+
+```{r newOn,cache=TRUE,dependson='newOnversion',eval=X}
+newd <- lapply(versions$version,function(v){
+    cat(sprintf("%s ",v))
+    reldate <- versions[version==v, c(beg=date,end=date+6)]
+    d1 <- d0[pcd %between% reldate,]
+    check <- merge(d0,d1[,list(d=1),by=cidf],by='cidf')[date<(pcd-1),][, list(date,pcd) ,by=cidf]
+    if((errpr <- length(unique(check$cidf))/length(unique(d1$cidf))*100)>0.5)
+        stop(sprintf("You have many profiles with dates of activity before the profile creation date: %s",errpr))
+    cat(sprintf(" bad data:%s\n",errpr))
+    C <- 1/60
+    d1 <- d1[date>=pcd,][, {
+        if( TRUE){
+            list(pcd=pcd[1],version=v,release=reldate[1],
+                 daysSince = as.numeric(date -pcd[1]),
+                 sh=sh,
+                 ah=ah,
+                 dom = (domainsvisited),
+                 uris = (uris),
+                 tabs = (tabsopened),
+                 srch = (search),
+                 crash =(crash),
+                 cr = cr,
+                 active = sh>0 ,
+                 active2 = sh>0 & uris>0
+                 )
+        }
+    },by=cidf][daysSince<=21,]
+}) 
+newd <- rbindlist(newd)
+```
+
+```{r saveData,eval=FALSE,dependsOn='newOn'}
+save(d0,newd, newonv,file="~/tmp/snapshot.Rdata")
+```

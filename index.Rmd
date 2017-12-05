@@ -28,6 +28,6 @@ Slack channels are
   
 This report is analysis of new profiles on 57 and existing profiles that updated
 to 57. Seasonality could well be an issue but is something I will gloss over for
-the moment.
+the moment .
 
 

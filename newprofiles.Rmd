@@ -1,0 +1,140 @@
+# Studying New Profiles
+
+Recall we are working with a 0.1% sample. Very few of our figure will have actual counts.
+
+## Period of Study
+
+We consider the first week since a version is released and the three weeks
+thereafter. Retention is measured separately for every week, every other measure
+is cumulative across weeks.
+
+## Acquisition
+
+How many profiles do we usually acquire in the period? This is based on profile
+creation date and a more accurate view is the *new profile ping*, however we
+lack history for this ping.
+
+```{r newcount, cache=TRUE, dependson='newonv'}
+a <- newonv[,list(release=release[1],nprofiles = FAC*length(unique(cidf))) ,by=version][order(version),]
+a
+```
+
+## Retention 
+
+The definition of retention is whether a profile used the browser.
+
+
+```{r retention,cache=TRUE,dependson='newonv'}
+isn <- function(s,subcode=NA) if(is.null(s) || length(s)==0) subcode else s
+a1 <- newonv[,{
+    oneday <- isn(1*any((active[daysSince==0])),0)
+    week1 <- isn(1*any(active[daysSince %between% c(0,6)]),0)
+    week2 <- isn(1*any(active[daysSince %between% c(7,13)]),0)
+    week3 <- isn(1*any(active[daysSince %between% c(14,20)]),0)
+    data.table(period=c('oneday','week1','week2','week3'),active=c(oneday,week1,week2,week3))
+},by=list(version,cidf)]
+a1 <- a1[,list(active=sum(active)*FAC) ,by=list(version,period)]
+a1 <- merge(a,a1,by='version')[,retention:=active/nprofiles][,][order(period,version),]
+a1 <- a1[period %in% c("oneday","week1","week2"),][,list(version,release,period,retention=retention*100)]
+a1 <- reshape(a1,dir='wide', v.names='retention',timevar='period',idvar=c('version','release'))
+
+```
+
+## Session Length / Profile / Day 
+
+```{r session, cache=TRUE,dependson='newonv'}
+a2 <- newonv[sh<=24, {
+    w1 <- isn(sum(sh[daysSince %between% c(0,6)]),0)
+    w2 <- isn(sum(sh[daysSince %between% c(0,13)]),0)
+    w3 <- isn(sum(sh[daysSince %between% c(0,20)]),0)
+    d1 <- sum(daysSince %between% c(0,6))
+    d2 <- sum(daysSince %between% c(0,13))
+    d3 <- sum(daysSince %between% c(0,20))
+    if(d1==0) w1 <- 0
+    if(d2==0) w2 <- 0
+    if(d3==0) w3 <- 0
+    data.table(period=c('week1','week2','week3'),sessionlength=c(w1/(0.001+d1),w2/(0.001+d2),w3/(0.001+d3)))
+},by=list(version,cidf)]
+a2 <- a2[, list(sessionlength=mean(sessionlength)),by=list(version,period)]
+a2 <- merge(a,a2,by='version')[order(period,version),]
+a2 <- a2[period %in% c("oneday","week1","week2"),][,list(version,release,period,sessionlength)]
+a2 <- reshape(a2,dir='wide', v.names='sessionlength',timevar='period',idvar=c('version','release'))
+
+```
+
+
+## Intensity / Profile
+
+The ratio of the active ticks (in hours) to the total usage (aggregated to the
+given period). The higher the value, more 'involved' the profile is (e.g. a lot
+of mouse movement,page scrolling, clicking on things  etc)
+
+```{r intens, cache=TRUE,dependson='newonv'}
+a3 <- newonv[sh<=24, {
+    s1 <- isn(sum(sh[daysSince %between% c(0,6)]),0)
+    s2 <- isn(sum(sh[daysSince %between% c(0,13)]),0)
+    s3 <- isn(sum(sh[daysSince %between% c(0,20)]),0)
+    a1 <- isn(sum(ah[daysSince %between% c(0,6)]),0)
+    a2 <- isn(sum(ah[daysSince %between% c(0,13)]),0)
+    a3 <- isn(sum(ah[daysSince %between% c(0,20)]),0)
+    data.table(period=c('week1','week2','week3'),intensity=c(a1/(C+s1),a2/(C+s2),a3/(C+s3)))
+},by=list(version,cidf)]
+a3 <- a3[, list(intensity=mean(intensity)),by=list(version,period)]
+a3 <- merge(a,a3,by='version')[order(period,version),]
+a3 <- a3[period %in% c("oneday","week1","week2"),][,list(version,release,period,intensity)]
+a3 <- reshape(a3,dir='wide', v.names='intensity',timevar='period',idvar=c('version','release'))
+
+```
+
+## URIs visited
+
+## Tabs and Windows Opened
+
+## Searches
+
+## Crash Propensity
+
+The definition of a crash is if `C` defined as 
+
+```
+C = crash_submit_success_main+(crashes_detected_content-shutdown_kill)
+```
+
+is positive. Note that `crash_submit_success_main` is biased below the true
+number of browser crashes. This measures the proportion of profiles
+experiencing a crash in a given time period.
+
+
+```{r crashprop,cache=TRUE,dependson='newonv'}
+a4 <- newonv[,{
+    oneday <- isn(1*any((cr[daysSince==0])),0)
+    week1 <- isn(1*any(cr[daysSince %between% c(0,6)]),0)
+    week2 <- isn(1*any(cr[daysSince %between% c(7,13)]),0)
+    week3 <- isn(1*any(cr[daysSince %between% c(14,20)]),0)
+    data.table(period=c('oneday','week1','week2','week3'),crashq=c(oneday,week1,week2,week3))
+},by=list(version,cidf)]
+a4 <- a4[,list(crashq=sum(crashq)*FAC) ,by=list(version,period)]
+a4 <- merge(a,a4,by='version')[,crashprop:=crashq/nprofiles][,][order(period,version),]
+a4 <- a4[period %in% c("oneday","week1","week2"),][,list(version,release,period,crashprop=crashprop*100)]
+a4 <- reshape(a4,dir='wide', v.names='crashprop',timevar='period',idvar=c('version','release'))
+
+```
+
+## Crash Rates
+
+### Definition 1
+
+We compute the crash rate (total content and browser crashes removing shutdowns
+per hour)  for a profile and then average this across profiles. The
+interpretation: "pick a profile at random, then the value below is crash rate
+for a typical profile".
+
+### Definition 2
+
+This is the definition used by [https://www.arewestableyet.com/dashboard/]
+(table on the right, 'M+C-S'). It is defined as the total crashes divided the
+total profile hours. The interpretation is "choose a random profile weighted by
+the hours of use in the week, then the value below is their crash rate" (with
+the data i have i can’t compute the percentiles)
+
+

@@ -32,65 +32,70 @@ mozfun.register_udf(sqlContext
                     , lambda arr:  sum(arr) if arr else 0, "array_sum"
                     , pyspark.sql.types.IntegerType())
 
-def newprofiles(version,minpcd,maxpcd,minsubmission,maxsubmission,minsubsession,maxsubsession):
+def newprofiles(version,minpcd,maxpcd,minsubmission,maxsubmission,minsubsession,maxsubsession,doall=False):
     st= """
-        SELECT
-        client_id as cid,
-        'new' as persona,
-        profile_creation_date as pcd,
-        datediff(
-        from_unixtime(unix_timestamp(substr(subsession_start_date,1,10), 'yyyy-MM-dd')),
-        date_add('1970-01-01', profile_creation_date)
-        ) AS tSincePCreate,
-        '{version}' as cohort,
-        substr(app_version,1,2) as version,
-        sum(subsession_length / 60.0 / 60) AS sh,
-        sum(active_ticks * 5 /3600.0) as ah,
-        sum(coalesce(scalar_parent_browser_engagement_unique_domains_count,0))  as domainsvisited,
-        sum(coalesce(scalar_parent_browser_engagement_total_uri_count,0))  AS uris,
-        sum(coalesce(scalar_parent_browser_engagement_tab_open_event_count,0)) as tabsopened,
-        sum(coalesce(crash_submit_success_main,0)) as cm,
-        sum(coalesce(crashes_detected_content, 0))- sum(coalesce(shutdown_kill,0)) as cc,
-        sum(coalesce(crashes_detected_plugin,0))+sum(coalesce(crashes_detected_gmplugin,0)) as cp,
-        sum(case
-         when search_counts is not null then array_sum(search_counts.count) else 0
-        end)  as search
-        FROM ms
-        WHERE
-        normalized_channel = 'release'
-        and app_name = 'Firefox'
-        and profile_creation_date >= {minpcd} and profile_creation_date<={maxpcd} 
-        and substr(subsession_start_date,1,10) >= '{minsubsession}' and substr(subsession_start_date,1,10)<='{maxsubsession}'
-        and submission_date_s3 >= '{minsubmission}' and submission_date_s3 <= '{maxsubmission}'
-        and sample_id >='11' and sample_id <='20'
-        group by 1,2,3,4,5,6
-        """.format(version=version,
-                   minpcd=minpcd,
-                   maxpcd=maxpcd, 
-                   minsubmission=minsubmission,
-                   maxsubmission=maxsubmission,
-                   minsubsession=minsubsession,
-                   maxsubsession=maxsubsession
-        )
+    SELECT
+    client_id as cid,
+    'new' as persona,
+    profile_creation_date as pcd,
+    datediff(
+    from_unixtime(unix_timestamp(substr(subsession_start_date,1,10), 'yyyy-MM-dd')),
+    date_add('1970-01-01', profile_creation_date)
+    ) AS tSincePCreate,
+    '{version}' as cohort,
+    substr(app_version,1,2) as version,
+    sum(subsession_length / 60.0 / 60) AS sh,
+    sum(active_ticks * 5 /3600.0) as ah,
+    sum(coalesce(scalar_parent_browser_engagement_unique_domains_count,0))  as domainsvisited,
+    sum(coalesce(scalar_parent_browser_engagement_total_uri_count,0))  AS uris,
+    sum(coalesce(scalar_parent_browser_engagement_tab_open_event_count,0) +
+       coalesce(scalar_parent_browser_engagement_window_open_event_count,0)) as tabsopened,
+    sum(coalesce(crash_submit_success_main,0)) as cm,
+    sum(coalesce(crashes_detected_content, 0))- sum(coalesce(shutdown_kill,0)) as cc,
+    sum(coalesce(crashes_detected_plugin,0))+sum(coalesce(crashes_detected_gmplugin,0)) as cp,
+    sum(case
+    when search_counts is not null then array_sum(search_counts.count) else 0
+    end)  as search
+    FROM ms
+    WHERE
+    normalized_channel = 'release'
+    and app_name = 'Firefox'
+    and profile_creation_date >= {minpcd} and profile_creation_date<={maxpcd} 
+    and substr(subsession_start_date,1,10) >= '{minsubsession}' and substr(subsession_start_date,1,10)<='{maxsubsession}'
+    and submission_date_s3 >= '{minsubmission}' and submission_date_s3 <= '{maxsubmission}'
+    and sample_id >='11' and sample_id <='20'
+    group by 1,2,3,4,5,6
+    having tSincePCreate>=0
+    """.format(version=version,
+               minpcd=minpcd,
+               maxpcd=maxpcd, 
+               minsubmission=minsubmission,
+               maxsubmission=maxsubmission,
+               minsubsession=minsubsession,
+               maxsubsession=maxsubsession
+    )
     newprofiles = spark.sql(st)
     newprofiles.createOrReplaceTempView("np")
-    x2 = spark.sql("""
-         with a as (select cid,min(version) as VersionCreatedOn from np group by 1 having VersionCreatedOn='{version}')
-         select np.* from np join a on np.cid=a.cid where np.version='{version}' and tSincePCreate>=0
-     """.format(version=version))
+    x2 = newprofiles
     x2.createOrReplaceTempView("x2")
-    f = spark.sql(""" select *,
-case when cm+cc+cp >0  then 1 else 0 end as crq,
+    if doall == False:
+    x2 = spark.sql("""
+    with a as (select cid,min(version) as VersionCreatedOn from np group by 1 having VersionCreatedOn='{version}')
+select np.* from np join a on np.cid=a.cid where np.version='{version}' and tSincePCreate>=0
+    """.format(version=version))
+    x2.createOrReplaceTempView("x2")
+f = spark.sql(""" select *,
+        case when cm+cc+cp >0  then 1 else 0 end as crq,
     1 as dayPresent,
-case when sh>0 and uris>0 then 1 else 0 end as active,
+    case when sh>0 and uris>0 then 1 else 0 end as active,
     cm+cc as tc,
-case when  tSincePCreate  <=6 then 1 
+    case when  tSincePCreate  <=6 then 1 
             when  tSincePCreate  <=13 then 2 
             when  tSincePCreate <=27 then 3
             when  tSincePCreate <=34 then 4
             else 5 end as week
-from x2 where pcd>0 and sh>=0""")
-    return [st,f]
+    from x2 where pcd>0 and sh>=0""")
+return [st,f]
 
 
 ```
@@ -112,7 +117,8 @@ creation date. For example, the output of the following query is in [https://sql
 
 ```{python eval=FALSE}
 ## Get dates for 56
-releases = { 
+releases = {
+    '54': datetime.datetime.strptime("2017-06-13","%Y-%m-%d").date(),
     '55': datetime.datetime.strptime("2017-08-08","%Y-%m-%d").date(),
     '56': datetime.datetime.strptime("2017-09-25","%Y-%m-%d").date(),
     '57': datetime.datetime.strptime("2017-11-13","%Y-%m-%d").date(),
@@ -125,6 +131,14 @@ LAGBUFF=10
 ACQPERIOD=7
 DURA=3*7
 
+cohort54 = newprofiles('54', 
+                       minpcd=(releases['54']-releases['origin']).days,
+                       maxpcd=(releases['54']-releases['origin']).days+ACQPERIOD,
+                       minsubmission=releases['54'].strftime("%Y%m%d"),
+                       maxsubmission=(releases['54']+datetime.timedelta(days=DURA+ACQPERIOD+LAGBUFF)).strftime("%Y%m%d"),
+                       minsubsession=releases['54'].strftime("%Y-%m-%d"),
+                       maxsubsession=(releases['54']+datetime.timedelta(days=DURA+ACQPERIOD)).strftime("%Y-%m-%d"))
+
 cohort55 = newprofiles('55', 
                        minpcd=(releases['55']-releases['origin']).days,
                        maxpcd=(releases['55']-releases['origin']).days+ACQPERIOD,
@@ -132,6 +146,14 @@ cohort55 = newprofiles('55',
                        maxsubmission=(releases['55']+datetime.timedelta(days=DURA+ACQPERIOD+LAGBUFF)).strftime("%Y%m%d"),
                        minsubsession=releases['55'].strftime("%Y-%m-%d"),
                        maxsubsession=(releases['55']+datetime.timedelta(days=DURA+ACQPERIOD)).strftime("%Y-%m-%d"))
+                       
+cohort55all = newprofiles('55all', 
+                       minpcd=(releases['55']-releases['origin']).days,
+                       maxpcd=(releases['55']-releases['origin']).days+ACQPERIOD,
+                       minsubmission=releases['55'].strftime("%Y%m%d"),
+                       maxsubmission=(releases['55']+datetime.timedelta(days=DURA+ACQPERIOD+LAGBUFF)).strftime("%Y%m%d"),
+                       minsubsession=releases['55'].strftime("%Y-%m-%d"),
+                       maxsubsession=(releases['55']+datetime.timedelta(days=DURA+ACQPERIOD)).strftime("%Y-%m-%d"),doall=True)
                        
 
 cohort56 = newprofiles('56', 
@@ -152,7 +174,7 @@ cohort57 = newprofiles('57',
                        maxsubsession=(releases['57']+datetime.timedelta(days=DURA+ACQPERIOD)).strftime("%Y-%m-%d"))
 
 
-cohorts = cohort57[1].union(cohort56[1].union(cohort55[1]))
+cohorts = cohort57[1].union(cohort56[1].union(cohort55[1].union(cohort55all[1].union(cohort54[1])  )))
 cohorts = cohorts.cache()
 cohorts.createOrReplaceTempView("cohorts")
 
@@ -270,4 +292,4 @@ for i in ["newprofilesByCohort","activeProfiles","crashprofiles","shdf",'intensd
     write.csv(path=O ,mode='overwrite',compression='none',sep=',',nullValue='NA',header=True)
         
 ```
-
+        

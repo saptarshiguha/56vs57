@@ -5,7 +5,7 @@ readCSVAWS <- function(f){
     system("rm -rf /tmp/x")
     system(sprintf("aws s3 sync s3://mozilla-metrics/user/sguha/tmp/56vs57new/%s/ /tmp/x",f))
     fread(list.files("/tmp/x/",full=TRUE,pattern='*.csv'))
-}
+ }
 
 newprofilesByCohort <- readCSVAWS("newprofilesByCohort")
 activeprofiles <- readCSVAWS("activeProfiles")
@@ -37,14 +37,13 @@ makeTable <- function(d, x,measure,pct=c("10"=0.1,"90"=0.9)){
 
 Count of new profiles acquired in *one week since release date* (10% sample)
 
-```{r newProfileCount, cache=TRUE}
+```{r newProfileCount, cache=TRUE,dependson='dataImport'}
 options(width=150)
 invisible({
     newprofilesByCohort[, ":="(minpcd = as.Date(minpcd, origin="1970-01-01"),
                                maxpcd = as.Date(maxpcd,origin="1970-01-01"))]
     library(boot)
     library(knitr)
-
 })
 newprofilesByCohort
 ```
@@ -53,7 +52,7 @@ newprofilesByCohort
 Percentage of profiles active in the first 7 days and the next 7 days. 
 
 
-```{r activeProfile,cache=TRUE}
+```{r activeProfile,cache=TRUE,dependson='dataImport'}
 invisible({
     options(width=1000)
     activeprofiles <- activeprofiles[week<=2,]
@@ -69,9 +68,9 @@ activeCount[,list(week,cohort,Week1Retention=propActive)]
 ## Session Length
 Session length per profile per day for the first and second weeks
 
-```{r activeSession,cache=TRUE}
+```{r activeSession,cache=TRUE,dependson='dataImport'}
 shdf0 <- shdf[week<=2,]
-makeTable(shdf0, measure="Hrs/Profile Per Week(till)",x="shavg")
+ makeTable(shdf0, measure="Hrs/Profile Per Week(till)",x="shavg")
 ```
 
 ## Intensity of Use
@@ -79,7 +78,7 @@ makeTable(shdf0, measure="Hrs/Profile Per Week(till)",x="shavg")
 Intensity of use of new profiles, which is the ratio of active time to total
 time. 
 
-```{r intens,cache=TRUE}
+```{r intens,cache=TRUE,dependson='dataImport'}
 intensdf0 <- intensdf[week<=2,]
 ## intens1 <- boot(intensdf0, R=REP,strata=intensdf0$cohort,stat=function(d,i,pb){
 ##     d0 <- d[i,]
@@ -89,26 +88,26 @@ intensdf0 <- intensdf[week<=2,]
 ## },pb=makePB(REP))
 ## intens1 <- bci(intens1,measure='Week 1 Intensity',names=newprofilesByCohort$cohort)
 options(width=1000)
-makeTable(intensdf0,measure="Intensity of use Per Week(till)",x="xm")
+ makeTable(intensdf0,measure="Intensity of use Per Week(till)",x="xm")
 ```
 
-## Tabs  Opened
+## Tabs And Windows  Opened
 
-```{r tabsOpened,cache=TRUE}
+```{r tabsOpened,cache=TRUE,dependson='dataImport'}
 tabdf0 <- tabdf[week<=2,]
 makeTable(tabdf0,measure="Tabs/Hour/Profile",x="xm")
 ```
 
 ## URIs Visited
 
-```{r uriOpened,cache=TRUE}
+```{r uriOpened,cache=TRUE,dependson='dataImport'}
 uridf0 <- uridf[week<=2,]
 makeTable(uridf0,measure="URIs visited/Hour/Profile",x="xm")
 ```
 
 ## Searches
 
-```{r searchespened,cache=TRUE}
+```{r searchespened,cache=TRUE,dependson='dataImport'}
 searchdf0 <- searchdf[week<=2,]
 makeTable(searchdf0,measure="Searches made/Hour/Profile",x="xm")
 
@@ -116,7 +115,7 @@ makeTable(searchdf0,measure="Searches made/Hour/Profile",x="xm")
 
 ## Proportion of Profiles Crashing
 
-```{r crashlik, cache=TRUE}
+```{r crashlik, cache=TRUE,dependson='dataImport'}
 crashprofiles <- crashprofiles[week<=2,]
 crashCount <- crashprofiles[, list(crashs=sum(crashedIn)),by=list(week, cohort)][order(week,cohort),]
 crashCount <- merge(crashCount,newprofilesByCohort,by='cohort')[, ":="(propCrash=crashs/n)][order(week,cohort),]
@@ -134,7 +133,7 @@ We compute the  crash rate for a profile and then average across profiles. The
 interpretation: "pick a profile at random, then the value below is crash rate
 for a typical profile".
 
-```{r crashR,cache=TRUE}
+```{r crashR,cache=TRUE,dependson='dataImport'}
 tcdf0 <- tcdf[week<=2,]
 z <- makeTable(tcdf0,measure="Content and Main Crashes /1000 Hours/Profile",x="xm")
 z <- z[,":="(pct10=NULL, pct90=NULL,Average=Average*1000)]
@@ -144,7 +143,7 @@ z
 
 and for those profiles that crashed
 
-```{r crashR2,cache=TRUE}
+```{r crashR2,cache=TRUE,dependson='dataImport'}
 options(width=1000)
 z2 <- makeTable(tcdf0[xm>0,],measure="Content and Main Crashes/1000 Hours/Crashing Profile",x="xm"
                 ,pct=c('10'=0.1,'50'=0.5,'90'=0.9))
@@ -160,7 +159,7 @@ a random profile weighted by the hours of use in the week, then the value below
 is their crash rate". (with the data i have i can't compute the percentiles)
 
 
-```{r crashR3,cache=TRUE}
+```{r crashR3,cache=TRUE,dependson='dataImport'}
 tcdf0 <- tcdf[week<=2,]
 tcdf0[, list(CrashRatePer1000Hr = sum(xct)/(sum(shct))*1000),by=list(week,cohort)][order(week,cohort),]
 ```

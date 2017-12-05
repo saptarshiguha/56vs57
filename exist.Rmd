@@ -34,13 +34,13 @@ mozfun.register_udf(sqlContext
                     , lambda arr:  sum(arr) if arr else 0, "array_sum"
                     , pyspark.sql.types.IntegerType())
 
-def base(minSubmission, maxSubmission,sampleid):
+def base(minSubmission, maxSubmission,minsubsession,maxsubsession,sampleid):
     a= spark.sql("""
     select 
     client_id as cid,
-    from_unixtime(unix_timestamp(submission_date_s3,'yyyyMMdd'),'yyyy-MM-dd') as date,
+    from_unixtime(unix_timestamp(substr(subsession_start_date,1,10),'yyyy-MM-dd'),'yyyy-MM-dd') as date,
     date_format(date_add('1970-01-01',profile_creation_date),'yyyy-MM-dd') as pcd,
-    app_version as version,
+    substr(app_version,1,2)  as version,
     count(*) as ns,
     sum(subsession_length)/3600 as th,
     sum(active_ticks*5/3600) as ah,
@@ -56,13 +56,13 @@ def base(minSubmission, maxSubmission,sampleid):
     sum(coalesce(crashes_detected_plugin,0) + coalesce(crashes_detected_gmplugin,0)) as cp
     from ms
     where
-    submission_date_s3 >= '{minSubmission}' 
-    AND submission_date_s3 <= '{maxSubmission}' 
+    and substr(subsession_start_date,1,10) >= '{minsubsession}' and substr(subsession_start_date,1,10)<='{maxsubsession}'
     AND normalized_channel = 'release'
     AND app_name = 'Firefox'
     AND sample_id in ('{sampleid}')
     group by 1,2,3,4
-    """.format( minSubmission=minSubmission, maxSubmission=maxSubmission,sampleid=sampleid))
+    """.format( minSubmission=minSubmission, maxSubmission=maxSubmission,maxsubsession=maxsubsession,minsubmission=minsubmission,
+                sampleid=sampleid))
     a.createOrReplaceTempView("base")
     return(a)
 
@@ -140,12 +140,15 @@ releases = {
     'origin': datetime.datetime.strptime("1970-01-01","%Y-%m-%d").date()
 }
 
-v55 = prePost('42',toVersion="55",toVersionLabel="55",
-              d1 = releases['55'].strftime("%Y-%m-%d"),
-              d2 = (releases['55']+ datetime.timedelta(days=14)).strftime("%Y-%m-%d"),
-              minSubmission = (releases['55']+ datetime.timedelta(days=-28)).strftime("%Y%m%d"),
-              maxSubmission = (releases['55']+ datetime.timedelta(days=21+14)).strftime("%Y%m%d"),
-              dbefore=28,dafter=28)
+
+
+v54 = prePost('42',toVersion="54",toVersionLabel="54",
+              d1 = releases['54'].strftime("%Y-%m-%d"),
+              d2 = (releases['54']+ datetime.timedelta(days=14)).strftime("%Y-%m-%d"),
+              minsubsession=(releases['54']+datetime.timedelta(days=-14)).strftime("%Y-%m-%d"),
+              maxsubsession=(releases['54']+datetime.timedelta(days=14+21)).strftime("%Y-%m-%d"),
+              dbefore=14,dafter=21)
+
 
 v56 = prePost('43',toVersion="56",toVersionLabel="56",
               d1 = releases['56'].strftime("%Y-%m-%d"),
