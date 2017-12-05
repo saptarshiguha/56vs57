@@ -9,7 +9,7 @@ older versions (in the first week since profile creation).
 
 
 ```{r sessionbase,cache=TRUE,dependson='newOn'}
-s1 <- d0[sh<=24 & pcd>='2017-01-01' & pcd<='2017-12-01' & date >=pcd  & date<=(pcd+6),]
+s1 <- d0[sh<=24 & pcd>='2016-08-08' & pcd<='2017-12-01' & date >=pcd  & date<=(pcd+6),]
 s1 <- s1[,{
     ts <- sum(sh)
     nd <- .N
@@ -17,10 +17,16 @@ s1 <- s1[,{
 },by=list(pcd,cidf)][,list(s=mean(s)),by=pcd][order(pcd),]
 
 xyplot(s ~ pcd, xlab='Profile Creation Date', ylab='',
-       type=c('g','l'),scale=list(x=list(tick.num=25,cex=0.6,rot=45)),data=s1,col='#cccccc',
+       type=c('l'),scale=list(x=list(tick.num=25,cex=0.6,rot=45,format='%Y-%m-%d'),
+                                  y=list(tick.num=10)
+                                  ),data=s1,col='#cccccc',
        panel=function(x,y,...){
+           panel.grid(v=0)
            panel.xyplot(x,y,...)
            y2=as.numeric(filter (y, rep(1,7)/7))
+           for(i in 1:nrow(versions)){
+               panel.abline(v=versions[i,date],lty=3,col='red')
+           }
            panel.loess(x,y2,type='l',col='black',span=0.25,lwd=1.5)
-       },title='Session Length(hr)/Profile/Day for the profiles first week')
+       },main='Session Length(hr)/Profile/Day for the profiles first week')
 ```
