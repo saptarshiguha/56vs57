@@ -144,7 +144,54 @@ newonv <- lapply(versions$version,function(v){
 newonv <- rbindlist(newonv)
 ```
 
+## Existing Users updating to a version
+
+For this data set, 
+
+- for every version, 
+- we keep profiles that updated to this version in two weeks since release (need
+  a longer period to handle throttling)
+- have been on some version less than this version
+- keep two weeks of prior use and two weeks of post use (they need not have been
+  active and if so we will mark it as such)
+  - these are labeled as first week after update
+  - and 2nd week after update
+  - and cumulative two weeks after update
+
+
+
+```{r existData, cache=TRUE,eval=X,dependson='getdata'}
+exisd <- versions[,{
+    templ <- data.table(when=c(0,1,2),ndays=0,sh=0,ah=0,uris=0,tabs=0,search=0,crash=0,active=0,cr=0)
+    V <- .BY$version
+    print(V)
+    s1 <- .BY$date
+    s2 <- s1+13
+    upd <- d0[ sh<=24 & date>=s1 & date<=s2 & version==V,][, data.table(cidf=unique(cidf))]
+    upd <- merge(d0,upd, by='cidf')
+    upd <- merge(upd[, list(hasOlder =   any(version < V)),by=cidf][hasOlder==TRUE,list(cidf)],upd,by='cidf')
+    upd[, dateOnV:=min(date[version==V]),by=cidf]
+    upd[, postPart1:=dateOnV+ 7]
+    upd[, postPart2:=dateOnV+ 14]
+    upd[, preEnd:=dateOnV-14]
+    p1 <- upd[date<dateOnV & date >=preEnd,][,when:=0]
+    p2 <- upd[date>=dateOnV & date<postPart1,][,when:=1]
+    p3 <- upd[date>=postPart1 & date<postPart2,][,when:=2]
+    p=rbind(p1,p2,p3)
+    setkey(p,cidf,pcd,date)
+    pp <- p[, list(ndays=.N*1,sh=sum(sh),ah=sum(ah),uris=sum(uris),tabs=sum(tabsopened),search=sum(search),crash=sum(crash),
+                   active=1*(sum(sh)>0), cr=1*(sum(crash)>0))
+           ,by=list(cidf,when)]
+    pp <- pp[,{
+        f <- rbind(.SD,templ[!when %in% .SD$when,])
+        g <- f[when %in% c(1,2), list(when=100,ndays=sum(ndays),sh=sum(sh),ah=sum(ah),uris=sum(uris),tabs=sum(tabs),search=sum(search)
+                                     ,crash=sum(crash), active=1*(sum(sh)>0), cr=1*(sum(crash)>0))]
+        rbind(f,g)
+    },by=cidf]
+},by=list(date,version)]
+```
+
 
 ```{r saveData,cache=TRUE,dependsOn='newOn'}
-save(d0, newonv,versions, file="~/tmp/snapshot.Rdata")
+save(d0, newonv,versions,exisd,FAC, file="~/tmp/snapshot.Rdata")
 ```

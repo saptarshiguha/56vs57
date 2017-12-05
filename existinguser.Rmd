@@ -1,0 +1,41 @@
+# Existing Users
+
+
+## Lapsed Users
+
+The definition of a lapsed user is one who was on two or more older versions.
+What percentage of these profiles update to a given version? We extend this for
+2,3, and 4 versions or older. 
+
+We consider profiles who updated in the 14 days since version release.
+
+```{r lapsed1, cache=TRUE}
+options(width=1000)
+lapsedUsers <- versions[, {
+    s1 <- .BY$date
+    s2 <- .BY$date+14
+    V <- .BY$version
+    a= d0[date>=s1 & date<=s2 & version==V, data.table(cidf=unique(cidf))]
+    b = merge(d0[,list(cidf,date,version)],a, by='cidf')[ date<s1 & date >=(s1-210) & version < V,]
+    b[, list(l2 = 1*((V-max(version))>=2),l3=1*((V-max(version))>=3), l4=1*((V-max(version))>=4)) ,  by=cidf]
+},by=list(date,version)]
+lapsedUsers[, list(PropOn2PlusOlder=mean(l2),PropOn3PlusOlder=mean(l3),PropOn4PlusOlder=mean(l4)), by=list(date,version)]
+```
+
+What is there *retention rate*? We look at it for profiles 3  or more versions
+older
+
+```{r lapsed2, cache=TRUE,dependson='lapsed1'}
+options(width=1000)
+retentionForLapsed3 <- versions[,{
+    lapsedUser2 <- merge(d0, lapsedUsers[l3==1 & version==.BY$version,list(cidf)],by='cidf')
+    lapsedUser2[version==.BY$version,{
+    o1 <- .SD[ as.numeric((date - min(date))) %between% c(0,6), any(sh>0)]
+    o2 <- .SD[ as.numeric((date - min(date))) %between% c(7,13), any(sh>0)]
+    list(week1=o1,week2=o2)
+    },by=cidf][,list(week1prop=mean(week1), week2prop=mean(week2))]
+}, by=list(date,version)]
+```
+
+
+## 

@@ -1,4 +1,4 @@
-# Baselines
+# Baselines For New Profiles
 
 
 
@@ -7,9 +7,9 @@ v2 <- versions[, {
     s1 <- .BY$date
     s2 <- .BY$date+6
     V <- .BY$version
-    list(PctNewProfileOnOlderVersion = d0[pcd >=s1 & pcd<=s2,][, list(v = version[1]) ,by=cidf][, sum(v<V)/.N*100])
+    list(j = d0[pcd >=s1 & pcd<=s2,][, list(v = min(version[date>=pcd & date<=(pcd+1)])) ,by=cidf][, sum(v<V)/.N*100])
 },by=list(version,date)]
-xmins <- round(range(v2$PctNewProfileOnOlderVersion),2)
+xmins <- round(range(v2$j),2)
 ```
 
 ## First Week
