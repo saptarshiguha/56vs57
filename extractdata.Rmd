@@ -112,7 +112,7 @@ The rules for these profiles are
 Note, that these are not all new profiles on the time after release. New
 profiles in that time period can come from other versions.
 
-```{r newOnVersion,cache=TRUE,dependson='getdata',eval=X}
+```{r newOnVersion,cache=TRUE,dependson='getdata'}
 newonv <- lapply(versions$version,function(v){
     cat(sprintf("%s ",v))
     reldate <- versions[version==v, c(beg=date,end=date+6)]
@@ -144,41 +144,7 @@ newonv <- lapply(versions$version,function(v){
 newonv <- rbindlist(newonv)
 ```
 
-## New Profiles In Version Release Period
 
-Same as above but we dont care what version the profile was created on
-
-```{r newOn,cache=TRUE,dependson='newOnversion',eval=X}
-newd <- lapply(versions$version,function(v){
-    cat(sprintf("%s ",v))
-    reldate <- versions[version==v, c(beg=date,end=date+6)]
-    d1 <- d0[pcd %between% reldate,]
-    check <- merge(d0,d1[,list(d=1),by=cidf],by='cidf')[date<(pcd-1),][, list(date,pcd) ,by=cidf]
-    if((errpr <- length(unique(check$cidf))/length(unique(d1$cidf))*100)>0.5)
-        stop(sprintf("You have many profiles with dates of activity before the profile creation date: %s",errpr))
-    cat(sprintf(" bad data:%s\n",errpr))
-    C <- 1/60
-    d1 <- d1[date>=pcd,][, {
-        if( TRUE){
-            list(pcd=pcd[1],version=v,release=reldate[1],
-                 daysSince = as.numeric(date -pcd[1]),
-                 sh=sh,
-                 ah=ah,
-                 dom = (domainsvisited),
-                 uris = (uris),
-                 tabs = (tabsopened),
-                 srch = (search),
-                 crash =(crash),
-                 cr = cr,
-                 active = sh>0 ,
-                 active2 = sh>0 & uris>0
-                 )
-        }
-    },by=cidf][daysSince<=21,]
-}) 
-newd <- rbindlist(newd)
-```
-
-```{r saveData,eval=FALSE,dependsOn='newOn'}
-save(d0,newd, newonv,file="~/tmp/snapshot.Rdata")
+```{r saveData,cache=TRUE,dependsOn='newOn'}
+save(d0, newonv,versions, file="~/tmp/snapshot.Rdata")
 ```

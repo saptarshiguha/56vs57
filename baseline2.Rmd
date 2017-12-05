@@ -1,32 +1,97 @@
 # Baselines
 
+
+
+```{r older,cache=TRUE,include=FALSE}
+v2 <- versions[, {
+    s1 <- .BY$date
+    s2 <- .BY$date+6
+    V <- .BY$version
+    list(PctNewProfileOnOlderVersion = d0[pcd >=s1 & pcd<=s2,][, list(v = version[1]) ,by=cidf][, sum(v<V)/.N*100])
+},by=list(version,date)]
+xmins <- round(range(v2$PctNewProfileOnOlderVersion),2)
+```
+
+## First Week
+
 For context, the following figures are first week measures for new profiles.
 For example in the first figure, we plot the session length/day/profile against
 the day the profile was created. Overlaid is the a smooth line fitted to 7 day
 rolling averages. The dotted red lines correspond to version releases. Bear in
-mind that after a version is released between X and Y % of new profiles are on
+mind that after a version is released between `r xmins[1]` and `r xmins[2]`  % of new profiles are on
 older versions (in the first week since profile creation).
 
 
-```{r sessionbase,cache=TRUE,dependson='newOn'}
+```{r makePlot,cache=TRUE}
+pl <- function(v,s1,main,cutOut=1){
+    xyplot(get(v)  ~ pcd, xlab='Profile Creation Date'
+         , ylab=''
+         , type=c('l')
+         , scale=list(x=list(tick.num=25,cex=0.6,rot=45,format='%Y-%m-%d'),
+                      y=list(tick.num=10)
+                      )
+          , data=s1[get(v)<=quantile(get(v),cutOut),]
+          , col='#cccccc'
+          , panel=function(x,y,...){
+              panel.grid(v=0)
+              panel.xyplot(x,y,...)
+              y2=as.numeric(filter (y, rep(1,7)/7))
+              for(i in 1:nrow(versions)){
+                  panel.abline(v=versions[i,date],lty=3,col='red')
+              }
+              panel.loess(x,y2,type='l',col='black',span=0.25,lwd=1.5)
+          },main=main)
+}
 s1 <- d0[sh<=24 & pcd>='2016-08-08' & pcd<='2017-12-01' & date >=pcd  & date<=(pcd+6),]
-s1 <- s1[,{
-    ts <- sum(sh)
-    nd <- .N
-    list(s=if(nd==0) 0 else ts/nd)
-},by=list(pcd,cidf)][,list(s=mean(s)),by=pcd][order(pcd),]
-
-xyplot(s ~ pcd, xlab='Profile Creation Date', ylab='',
-       type=c('l'),scale=list(x=list(tick.num=25,cex=0.6,rot=45,format='%Y-%m-%d'),
-                                  y=list(tick.num=10)
-                                  ),data=s1,col='#cccccc',
-       panel=function(x,y,...){
-           panel.grid(v=0)
-           panel.xyplot(x,y,...)
-           y2=as.numeric(filter (y, rep(1,7)/7))
-           for(i in 1:nrow(versions)){
-               panel.abline(v=versions[i,date],lty=3,col='red')
-           }
-           panel.loess(x,y2,type='l',col='black',span=0.25,lwd=1.5)
-       },main='Session Length(hr)/Profile/Day for the profiles first week')
 ```
+
+
+```{r retbase,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
+s11 <- s1[,{    list(s=any( sh>0 ))},by=list(pcd,cidf)][,list(s=mean(s)),by=pcd][order(pcd),]
+pl("s",s11,"First Week Retention")
+```
+
+```{r sessionbase,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
+s2 <- s1[,{    list(s=sum(sh)/.N)},by=list(pcd,cidf)][,list(s=mean(s)),by=pcd][order(pcd),]
+pl("s",s2,"Session Hours/Day/Profile")
+```
+
+
+```{r intensbase,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
+s3 <- s1[,{    list(s=sum(ah,na.rm=TRUE)/(sum(sh,na.rm=TRUE)+C))},by=list(pcd,cidf)][,list(s=mean(s)),by=pcd][order(pcd),]
+pl("s",s3,"Intensity/Profile")
+```
+
+
+```{r tabsbase,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
+s4 <- s1[,{    list(s=sum(tabsopened)/(sum(sh,na.rm=TRUE)+C))},by=list(pcd,cidf)][,list(s=mean(s)),by=pcd][order(pcd),]
+s4 <- s4[pcd>='2017-03-01',]
+pl("s",s4,"Tabs & Windows Opened/Hour/Profile",cut=0.995)
+```
+
+
+```{r urisbase,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
+s5 <- s1[,{   list(s=sum(uris)/(sum(sh,na.rm=TRUE)+C))},by=list(pcd,cidf)][,list(s=mean(s)),by=pcd][order(pcd),]
+s5 <- s5[pcd>='2017-03-01',]
+pl("s",s5,"URIs  Opned/Hour/Profile",cut=0.995)
+```
+
+
+```{r searchesbase,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
+s6 <- s1[,{    list(s=sum(search)/(sum(sh,na.rm=TRUE)+C))},by=list(pcd,cidf)][,list(s=mean(s)),by=pcd][order(pcd),]
+pl("s",s6,"Searches Made/Hour/Profile",cut=0.995)
+```
+
+
+```{r crate0base,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
+s7 <- s1[,{    list(s=any(cr>0))},by=list(pcd,cidf)][,list(s=mean(s)),by=pcd][order(pcd),]
+s7 <- s7[pcd>='2017-08-01',]
+pl("s",s7,"# Profiles Crashing in Opening Week")
+```
+
+```{r crate1base,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
+s8 <- s1[,{    list(s=sum(crash)/sum(sh,na.rm=TRUE)*1000)},by=list(pcd)][order(pcd),]
+s8 <- s8[pcd>='2017-08-01',]
+pl("s",s8,"Crash Rate (Definition 2)")
+```
+

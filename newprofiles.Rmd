@@ -22,7 +22,7 @@ a
 ## Retention 
 
 The definition of retention is whether a profile used the browser.
-
+Not using the definition that uses URIs since that doesnt exist prior to 2017.
 
 ```{r retention,cache=TRUE,dependson='newonv'}
 isn <- function(s,subcode=NA) if(is.null(s) || length(s)==0) subcode else s
@@ -37,6 +37,7 @@ a1 <- a1[,list(active=sum(active)*FAC) ,by=list(version,period)]
 a1 <- merge(a,a1,by='version')[,retention:=active/nprofiles][,][order(period,version),]
 a1 <- a1[period %in% c("oneday","week1","week2"),][,list(version,release,period,retention=retention*100)]
 a1 <- reshape(a1,dir='wide', v.names='retention',timevar='period',idvar=c('version','release'))
+a1
 
 ```
 
@@ -59,6 +60,7 @@ a2 <- a2[, list(sessionlength=mean(sessionlength)),by=list(version,period)]
 a2 <- merge(a,a2,by='version')[order(period,version),]
 a2 <- a2[period %in% c("oneday","week1","week2"),][,list(version,release,period,sessionlength)]
 a2 <- reshape(a2,dir='wide', v.names='sessionlength',timevar='period',idvar=c('version','release'))
+a2
 
 ```
 
@@ -69,28 +71,67 @@ The ratio of the active ticks (in hours) to the total usage (aggregated to the
 given period). The higher the value, more 'involved' the profile is (e.g. a lot
 of mouse movement,page scrolling, clicking on things  etc)
 
-```{r intens, cache=TRUE,dependson='newonv'}
-a3 <- newonv[sh<=24, {
-    s1 <- isn(sum(sh[daysSince %between% c(0,6)]),0)
-    s2 <- isn(sum(sh[daysSince %between% c(0,13)]),0)
-    s3 <- isn(sum(sh[daysSince %between% c(0,20)]),0)
-    a1 <- isn(sum(ah[daysSince %between% c(0,6)]),0)
-    a2 <- isn(sum(ah[daysSince %between% c(0,13)]),0)
-    a3 <- isn(sum(ah[daysSince %between% c(0,20)]),0)
-    data.table(period=c('week1','week2','week3'),intensity=c(a1/(C+s1),a2/(C+s2),a3/(C+s3)))
-},by=list(version,cidf)]
-a3 <- a3[, list(intensity=mean(intensity)),by=list(version,period)]
-a3 <- merge(a,a3,by='version')[order(period,version),]
-a3 <- a3[period %in% c("oneday","week1","week2"),][,list(version,release,period,intensity)]
-a3 <- reshape(a3,dir='wide', v.names='intensity',timevar='period',idvar=c('version','release'))
-
+```{r simpleTables,include=FALSE}
+mt <- function(vname,modi=1){
+    a3 <- newonv[sh<=24, {
+        v1 <- get(vname)
+        x1 <- isn(sum(v1[daysSince %between% c(0,6)]),0)
+        x2 <- isn(sum(v1[daysSince %between% c(0,13)]),0)
+        x3 <- isn(sum(v1[daysSince %between% c(0,20)]),0)
+        s1 <- isn(sum(sh[daysSince %between% c(0,6)]),0)
+        s2 <- isn(sum(sh[daysSince %between% c(0,13)]),0)
+        s3 <- isn(sum(sh[daysSince %between% c(0,20)]),0)
+        data.table(period=c('week1','week2','week3'),x=c(x1/(C+s1),x2/(C+s2),x3/(C+s3))*modi  )
+    },by=list(version,cidf)]
+    a3 <- a3[, list(x=mean(x),xlow=quantile(x,0.15),xhigh=quantile(x,0.85)),by=list(version,period)]
+    a3 <- merge(a,a3,by='version')[order(period,version),]
+    a3 <- a3[period %in% c("week1","week2"),][,list(version,release,period,x,xlow,xhigh)]
+    a3 <- reshape(a3,dir='wide', v.names=c('x','xlow','xhigh'),timevar='period',idvar=c('version','release'))
+    setnames(a3,c("version",'release','week1Avg','week1Low','week1Hi','week2Avg','week2Low','weel2Hi'))
+    a3
+}
 ```
 
-## URIs visited
+
+```{r intens, cache=TRUE,dependson='newonv'}
+options(width=1000)
+(intensdf <- mt('ah'))
+```
+
 
 ## Tabs and Windows Opened
 
+Number of tabs and window opened per hour per profile. This field was not
+present in 2016.
+
+```{r tabsopened, cache=TRUE,dependson='newonv'}
+options(width=1000)
+tabdf <- mt("tabs")
+tabdf[release>'2017-03-01',]
+```
+
+
+
+## URIs visited
+
+The number of  URIs visited per hour per profile. URI measure was not present in 2016.
+
+```{r urivisit, cache=TRUE,dependson='newonv'}
+options(width=1000)
+tabdf <- mt("uris")
+tabdf[release>'2017-03-01',]
+```
+
 ## Searches
+
+Searches done per hour per profile
+
+```{r srchs, cache=TRUE,dependson='newonv'}
+options(width=1000)
+(srchdf <- mt('srch'))
+```
+
+
 
 ## Crash Propensity
 
@@ -117,7 +158,8 @@ a4 <- a4[,list(crashq=sum(crashq)*FAC) ,by=list(version,period)]
 a4 <- merge(a,a4,by='version')[,crashprop:=crashq/nprofiles][,][order(period,version),]
 a4 <- a4[period %in% c("oneday","week1","week2"),][,list(version,release,period,crashprop=crashprop*100)]
 a4 <- reshape(a4,dir='wide', v.names='crashprop',timevar='period',idvar=c('version','release'))
-
+options(width=1000)
+a4
 ```
 
 ## Crash Rates
@@ -129,6 +171,14 @@ per hour)  for a profile and then average this across profiles. The
 interpretation: "pick a profile at random, then the value below is crash rate
 for a typical profile".
 
+
+```{r crate1, cache=TRUE,dependson='newonv'}
+options(width=1000)
+cr1df <- mt('crash',mod=1000)
+cr1df[release>'2017-08-01',]
+```
+
+
 ### Definition 2
 
 This is the definition used by [https://www.arewestableyet.com/dashboard/]
@@ -136,3 +186,20 @@ This is the definition used by [https://www.arewestableyet.com/dashboard/]
 total profile hours. The interpretation is "choose a random profile weighted by
 the hours of use in the week, then the value below is their crash rate" (with
 the data i have i can’t compute the percentiles)
+
+```{r crate2, cache=TRUE,dependson='newonv'}
+a8 <- newonv[sh<=24, {
+    x1 <- isn(sum(crash[daysSince %between% c(0,6)]),0)
+    x2 <- isn(sum(crash[daysSince %between% c(0,13)]),0)
+    x3 <- isn(sum(crash[daysSince %between% c(0,20)]),0)
+    s1 <- isn(sum(sh[daysSince %between% c(0,6)]),0)
+    s2 <- isn(sum(sh[daysSince %between% c(0,13)]),0)
+    s3 <- isn(sum(sh[daysSince %between% c(0,20)]),0)
+    data.table(period=c('week1','week2','week3'),crashRate=c(x1/(C+s1),x2/(C+s2),x3/(C+s3))*1000) 
+},by=list(version)]
+a8 <- merge(a,a8,by='version')[order(period,version),]
+a8 <- a8[period %in% c("week1","week2"),][,list(version,release,period,crashRate)]
+a8 <- reshape(a8[release>='2017-08-01',], dir='wide', v.names='crashRate',timevar='period',idvar=c('version','release'))
+options(width=1000)
+a8
+```
