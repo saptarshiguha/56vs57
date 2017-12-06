@@ -1,4 +1,6 @@
-# Baselines For New Profiles
+# Baselines 
+
+## For New Profiles
 
 
 
@@ -12,7 +14,7 @@ v2 <- versions[, {
 xmins <- round(range(v2$j),2)
 ```
 
-## First Week
+### First Week
 
 For context, the following figures are first week measures for new profiles.
 For example in the first figure, we plot the session length/day/profile against
@@ -23,8 +25,8 @@ older versions (in the first week since profile creation).
 
 
 ```{r makePlot,cache=TRUE}
-pl <- function(v,s1,main,cutOut=1){
-    xyplot(get(v)  ~ pcd, xlab='Profile Creation Date'
+pl <- function(v,s1,main,cutOut=1,xaxs='pcd',xlab='Profile Creation Date'){
+    xyplot(get(v)  ~ get(xaxs), xlab=xlab
          , ylab=''
          , type=c('l')
          , scale=list(x=list(tick.num=25,cex=0.6,rot=45,format='%Y-%m-%d'),
@@ -95,3 +97,62 @@ s8 <- s8[pcd>='2017-08-01',]
 pl("s",s8,"Crash Rate (Definition 2)")
 ```
 
+## For Existing profiles
+
+```{r baselineExist,eval=FALSE,cache=TRUE}
+d01 <- d0[date>='2017-01-01',d0[sh<=24 & pcd<=(.BY$date-13) & date>=(.BY$date) & date<=(.BY$date+6),
+                                list(sh=sum(sh,na.rm=TRUE)/.N,
+                                     inten=sum(ah,na.rm=TRUE)/(sum(sh,na.rm=TRUE)+C),
+                                     tabs=sum(tabsopened)/(sum(sh,na.rm=TRUE)+C),
+                                     uris=sum(uris)/(sum(sh,na.rm=TRUE)+C),
+                                     search=sum(search)/(sum(sh,na.rm=TRUE)+C),
+                                     crashed=any(cr>0)),by=cidf][, list(sh=mean(sh),
+                                                                        inten=mean(inten),
+                                                                        tabs=mean(tabs),
+                                                                        uris=mean(uris),
+                                                                        search=mean(search),
+                                                                        crashed=mean(crashed))]
+         ,by=date]
+
+dcr <- d0[date>='2017-01-01',d0[sh<=24 & pcd<=(.BY$date-13) & date>=(.BY$date) & date<=(.BY$date+6),
+                                list(s=sum(crash)/sum(sh,na.rm=TRUE)*1000)]
+         ,by=date]
+save(d0, newonv,versions,exisd,FAC,d01,dcr, file="~/tmp/snapshot.Rdata")
+```
+
+
+```{r sessionbase2,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
+e2 <- d01[,list(date=date,s=sh)][order(date),]
+pl("s",e2,"Session  Hours/Day/Profile",xaxs='date',xlab='Date')
+```
+
+
+```{r intenbasd2,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
+e2 <- d01[,list(date=date,s=inten)][order(date),]
+pl("s",e2,"Intensity per /Profile",xaxs='date',xlab='Date ')
+```
+
+```{r tabsbase2,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
+e2 <- d01[,list(date=date,s=tabs)][order(date),]
+pl("s",e2,"Tabs + Windows Opened/ Hr/Profile",xaxs='date',xlab='Date ',cut=0.995)
+```
+
+```{r urisbase2,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
+e2 <- d01[,list(date=date,s=uris)][order(date),]
+pl("s",e2,"URIS visited/hr/Profile",xaxs='date',xlab='Date ',cut=0.995)
+```
+
+```{r searchesbase2,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
+e2 <- d01[,list(date=date,s=search)][order(date),]
+pl("s",e2,"Searches made /hour/profile",xaxs='date',xlab='Date ',cut=0.995)
+```
+
+```{r crasherbase2,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
+e2 <- d01[,list(date=date,s=crashed)][order(date),][date>='2017-08-01',]
+pl("s",e2,"Proportion of Crashers",xaxs='date',xlab='Date ')
+```
+
+```{r crasherbase3,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
+e2 <- dcr[order(date),][date>='2017-08-01',]
+pl("s",e2,"CRash Rate (Definition 2)",xaxs='date',xlab='Date ',cut=0.995)
+```

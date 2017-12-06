@@ -60,6 +60,7 @@ write.csv(path=O ,mode='overwrite',compression='none',sep=',',nullValue='NA',hea
 
 ```{r include=FALSE}
 X=FALSE
+C <- 1/60
 FAC <- 1000
 ```
 
@@ -149,8 +150,7 @@ newonv <- rbindlist(newonv)
 For this data set, 
 
 - for every version, 
-- we keep profiles that updated to this version in two weeks since release (need
-  a longer period to handle throttling)
+- we keep profiles that updated to this version in one  weeks since release 
 - have been on some version less than this version
 - keep two weeks of prior use and two weeks of post use (they need not have been
   active and if so we will mark it as such)
@@ -216,16 +216,10 @@ exisd <- versions[,{
                   actpoall   = isn(sum(sh[wall]),0)>0)
     }, by=cidf]
 },by=list(date,version)]
-save(d0, newonv,versions,exisd,FAC, file="~/tmp/snapshot.Rdata")
-h <- exisd[ version %in% c(57,56),]
-h[, mean(actpo2),by=list(version, shc)][order(shc,version),]
+
 ```
 
 
 ```{r saveData,cache=TRUE,dependsOn='newOn'}
 save(d0, newonv,versions,exisd,FAC, file="~/tmp/snapshot.Rdata")
 ```
-
-```{r}
-h <- exisd[ version %in% c(57,56),]
-m1 <- glm(actpo2 ~ version+log(1+shpre),data=h, family='binomial')

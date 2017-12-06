@@ -35,6 +35,7 @@ retentionForLapsed3 <- versions[,{
     list(week1=o1,week2=o2)
     },by=cidf][,list(week1prop=mean(week1), week2prop=mean(week2))]
 }, by=list(date,version)]
+retentionForLapsed3
 ```
 
 
