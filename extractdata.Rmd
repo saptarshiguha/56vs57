@@ -156,8 +156,6 @@ For this data set,
   active and if so we will mark it as such)
   - these are labeled as first week after update
   - and 2nd week after update
-  - and cumulative two weeks after update
-
 
 
 ```{r existData, cache=TRUE,eval=X,dependson='getdata'}
@@ -166,7 +164,7 @@ exisd <- versions[,{
     V <- .BY$version
     print(V)
     s1 <- .BY$date
-    s2 <- s1+13
+    s2 <- s1+7
     upd <- d0[ sh<=24 & date>=s1 & date<=s2 & version==V,][, data.table(cidf=unique(cidf))]
     upd <- merge(d0,upd, by='cidf')
     upd <- merge(upd[, list(hasOlder =   any(version < V)),by=cidf][hasOlder==TRUE,list(cidf)],upd,by='cidf')
@@ -182,16 +180,52 @@ exisd <- versions[,{
     pp <- p[, list(ndays=.N*1,sh=sum(sh),ah=sum(ah),uris=sum(uris),tabs=sum(tabsopened),search=sum(search),crash=sum(crash),
                    active=1*(sum(sh)>0), cr=1*(sum(crash)>0))
            ,by=list(cidf,when)]
-    pp <- pp[,{
-        f <- rbind(.SD,templ[!when %in% .SD$when,])
-        g <- f[when %in% c(1,2), list(when=100,ndays=sum(ndays),sh=sum(sh),ah=sum(ah),uris=sum(uris),tabs=sum(tabs),search=sum(search)
-                                     ,crash=sum(crash), active=1*(sum(sh)>0), cr=1*(sum(crash)>0))]
-        rbind(f,g)
-    },by=cidf]
+    pp[, {
+        w0 <- when ==0;w1 <- when==1;w2 <- when==2; wall <- when==1 | when==2
+        data.table(npre      =isn(ndays[w0],0),
+                  shpre      = isn(sh[w0],0),
+                  ahpre      = isn(ah[w0],0),
+                  uripre     = isn(uris[w0],0),
+                  tabpre     = isn(tabs[w0],0),
+                  srchpre    = isn(search[w0],0),
+                  crashpre   = isn(crash[w0],0),
+                  crpre      = isn(crash[w0],0)>0,
+                  shpo1      = isn(sh[w1],0),
+                  ahpo1      = isn(ah[w1],0),
+                  uripo1     = isn(uris[w1],0),
+                  tabpo1     = isn(tabs[w1],0),
+                  srchpo1    = isn(search[w1],0),
+                  crashpo1   = isn(crash[w1],0),
+                  actpo1     = isn(sh[w1],0)>0,
+                  crpo1      = isn(crash[w1],0)>0,
+                  shpo2      = isn(sh[w2],0),
+                  ahpo2      = isn(ah[w2],0),
+                  uripo2     = isn(uris[w2],0),
+                  tabpo2     = isn(tabs[w2],0),
+                  srchpo2    = isn(search[w2],0),
+                  crashpo2   = isn(crash[w2],0),
+                  crpo2      = isn(crash[w2],0)>0,
+                  actpo2     = isn(sh[w2],0)>0,
+                  shpoall    = isn(sum(sh[wall]),0),
+                  ahpoall    = isn(sum(ah[wall]),0),
+                  uripoall   = isn(sum(uris[wall]),0),
+                  tabpoall   = isn(sum(tabs[wall]),0),
+                  srchpoall  = isn(sum(search[wall]),0),
+                  crashpoall = isn(sum(crash[wall]),0),
+                  crpoall    = isn(sum(crash[wall]),0)>0,
+                  actpoall   = isn(sum(sh[wall]),0)>0)
+    }, by=cidf]
 },by=list(date,version)]
+save(d0, newonv,versions,exisd,FAC, file="~/tmp/snapshot.Rdata")
+h <- exisd[ version %in% c(57,56),]
+h[, mean(actpo2),by=list(version, shc)][order(shc,version),]
 ```
 
 
 ```{r saveData,cache=TRUE,dependsOn='newOn'}
 save(d0, newonv,versions,exisd,FAC, file="~/tmp/snapshot.Rdata")
 ```
+
+```{r}
+h <- exisd[ version %in% c(57,56),]
+m1 <- glm(actpo2 ~ version+log(1+shpre),data=h, family='binomial')
