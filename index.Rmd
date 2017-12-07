@@ -16,6 +16,20 @@ description: "Firefox 57 is rad! This report analyses the rad"
 github-repo: saptarshiguha/56vs57
 ---
 
+
+```{r global_options, include=FALSE}
+options(width=1000)
+library(DT)
+library(formattable)
+knitr::opts_chunk$set(
+ fig.width=10, fig.align='center',
+ echo=TRUE, cache.lazy=FALSE,
+ warning=FALSE, message=FALSE
+ )
+```
+
+
+
 # Introduction {#intro}
 Firefox 57 was launched on November 13. So many measurements happening. An
 [Impact Dashboard](https://strategy-and-insights.mozilla.com/topline-metrics/index.html) already

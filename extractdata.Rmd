@@ -23,10 +23,7 @@ sum(coalesce(scalar_parent_browser_engagement_tab_open_event_count,0) +
 coalesce(scalar_parent_browser_engagement_window_open_event_count,0)) as tabsopened,
 sum(coalesce(crash_submit_success_main,0)) as cm,
 sum(coalesce(crashes_detected_content, 0))- sum(coalesce(shutdown_kill,0)) as cc,
-sum(coalesce(crashes_detected_plugin,0))+sum(coalesce(crashes_detected_gmplugin,0)) as cp,
-sum(case
-when search_counts is not null then array_sum(search_counts.count) else 0
-end)  as search
+sum(coalesce(crashes_detected_plugin,0))+sum(coalesce(crashes_detected_gmplugin,0)) as cp
 FROM ms
 WHERE
 normalized_channel = 'release'
@@ -71,15 +68,15 @@ these large scale analyses.
 
 *Download the data from S3*, and do some simple modifications. 
 
-```{r getdata,eval=FALSE,cache=TRUE}
+```{r getdata,eval=TRUE,cache=TRUE}
 library(data.table)
 system("rm -rf /tmp/x")
 system(sprintf("aws s3 sync s3://mozilla-metrics/user/sguha/tmp/snapshot/ /tmp/x"))
 d0 <- fread(list.files("/tmp/x/",full=TRUE,pattern='*.csv'),
             colClasses=c("character","date","date","character",
                          "numeric","numeric","numeric","numeric",
-                         "numeric","numeric","numeric","numeric",
-                         "numeric"))
+                         "numeric","numeric","numeric","numeric","numeric"
+                         ))
 d0 <- d0[pcd>='2016-01-01' & date>='2016-01-01' & pcd <='2018-12-31' & date<='2018-12-31',]
 d0 <- d0[!is.na(pcd) & !is.na(date),]
 d0[, ":="(date=as.Date(date), pcd=as.Date(pcd),version=as.integer(version),crash=cm+cc, cr=(cm+cc)>0)]
@@ -132,7 +129,6 @@ newonv <- lapply(versions$version,function(v){
                  dom = (domainsvisited),
                  uris = (uris),
                  tabs = (tabsopened),
-                 srch = (search),
                  crash =(crash),
                  cr = cr,
                  active = sh>0 ,
@@ -158,9 +154,9 @@ For this data set,
   - and 2nd week after update
 
 
-```{r existData, cache=TRUE,eval=X,dependson='getdata'}
+```{r existData, cache=TRUE,eval=TRUE,dependson='getdata'}
 exisd <- versions[,{
-    templ <- data.table(when=c(0,1,2),ndays=0,sh=0,ah=0,uris=0,tabs=0,search=0,crash=0,active=0,cr=0)
+    templ <- data.table(when=c(0,1,2),ndays=0,sh=0,ah=0,uris=0,tabs=0,crash=0,active=0,cr=0)
     V <- .BY$version
     print(V)
     s1 <- .BY$date
@@ -177,7 +173,7 @@ exisd <- versions[,{
     p3 <- upd[date>=postPart1 & date<postPart2,][,when:=2]
     p=rbind(p1,p2,p3)
     setkey(p,cidf,pcd,date)
-    pp <- p[, list(ndays=.N*1,sh=sum(sh),ah=sum(ah),uris=sum(uris),tabs=sum(tabsopened),search=sum(search),crash=sum(crash),
+    pp <- p[, list(ndays=.N*1,sh=sum(sh),ah=sum(ah),uris=sum(uris),tabs=sum(tabsopened),crash=sum(crash),
                    active=1*(sum(sh)>0), cr=1*(sum(crash)>0))
            ,by=list(cidf,when)]
     pp[, {
@@ -187,30 +183,29 @@ exisd <- versions[,{
                   ahpre      = isn(ah[w0],0),
                   uripre     = isn(uris[w0],0),
                   tabpre     = isn(tabs[w0],0),
-                  srchpre    = isn(search[w0],0),
                   crashpre   = isn(crash[w0],0),
                   crpre      = isn(crash[w0],0)>0,
                   shpo1      = isn(sh[w1],0),
+                  npo1       = isn(ndays[w1],0),
                   ahpo1      = isn(ah[w1],0),
                   uripo1     = isn(uris[w1],0),
                   tabpo1     = isn(tabs[w1],0),
-                  srchpo1    = isn(search[w1],0),
                   crashpo1   = isn(crash[w1],0),
                   actpo1     = isn(sh[w1],0)>0,
                   crpo1      = isn(crash[w1],0)>0,
                   shpo2      = isn(sh[w2],0),
+                  npo2       = isn(ndays[w2],0),
                   ahpo2      = isn(ah[w2],0),
                   uripo2     = isn(uris[w2],0),
                   tabpo2     = isn(tabs[w2],0),
-                  srchpo2    = isn(search[w2],0),
                   crashpo2   = isn(crash[w2],0),
                   crpo2      = isn(crash[w2],0)>0,
                   actpo2     = isn(sh[w2],0)>0,
+                  npoall     = isn(sum(ndays[wall]),0),
                   shpoall    = isn(sum(sh[wall]),0),
                   ahpoall    = isn(sum(ah[wall]),0),
                   uripoall   = isn(sum(uris[wall]),0),
                   tabpoall   = isn(sum(tabs[wall]),0),
-                  srchpoall  = isn(sum(search[wall]),0),
                   crashpoall = isn(sum(crash[wall]),0),
                   crpoall    = isn(sum(crash[wall]),0)>0,
                   actpoall   = isn(sum(sh[wall]),0)>0)

@@ -1,6 +1,42 @@
 # Existing Users
 
 
+## First Two Weeks
+
+Once a profile updates to 57(in the first week of release), what does their
+subsequent two weeks look like?
+
+```{r exis2retention, cache=TRUE}
+exisd[,list(RetentionSecondWeek=mean(actpo2)), by=list(date,version)][order(version),]
+```
+
+```{r exis2session, cache=TRUE}
+exisd[,list(AverageSessionLength=mean(shpoall/npoall)) , by=list(date,version)][order(version),]
+```
+
+```{r exis2inten, cache=TRUE}
+exisd[,list(Intensity=mean(ahpoall/(C+shpoall))), by=list(date,version)][order(version),]
+```
+
+```{r exis2tabs, cache=TRUE}
+exisd[,list(TabsOpenedPerHour=mean(tabpoall/(C+shpoall))), by=list(date,version)][order(version),]
+```
+
+
+```{r exis2uri, cache=TRUE}
+exisd[,list(UriSVisitedPerHour=mean(uripoall/(C+shpoall))), by=list(date,version)][order(version),]
+```
+
+```{r exis2crashd, cache=TRUE}
+exisd[,list(CrashPropensity=mean(crpoall)), by=list(date,version)][order(version),]
+```
+
+
+```{r exis2crashd2, cache=TRUE}
+exisd[,list(CrashRateDefinition2=sum(crashpoall)/sum(shpoall)*1000), by=list(date,version)][order(version),]
+```
+
+
 ## Lapsed Users
 
 The definition of a lapsed user is one who was on two or more older versions.
@@ -39,4 +75,45 @@ retentionForLapsed3
 ```
 
 
-## 
+## Do Low Usage Users Move to a Higher Usage?
+
+A question asked is *does a low usage profile move to a higher usage after
+updating?*, the open questions are 
+
+- what is low usage profile?
+- if it has increased do 
+  - we see the same phenomena in other versions 
+  - is it because of seasonality? 
+
+One way to tackle the first is do the same analysis across multiple versions and
+for the second we can 
+
+- use total session length in two weeks (if they used it more, then this would
+  have gone up)
+- to handler seasonality, we can segment profiles previous use (the two weeks
+  prior to update) into 10 deciles and do the same for post usage (the following
+  two weeks). Thus has a profile in the lower percentiles (say bottom three)
+  moved to higher percentiles. Effectively this removes the dependency on actual
+  value of session length: if seasonality is present, a users session length
+  might well decrease but they will likely (if nothing changes) still remain in
+  the same percentile(or close to it). There is the issue of the population
+  changing i.e. my usage didnt change at all but i became a 'low user' because
+  of an influx of higher usage profiles. We will assume this doesn't happen in
+  small periods of time
+  
+
+```{r churn1,cache=TRUE
+h <- exisd[version %in% c(55,56),]
+h[ ,version:=factor(version)]
+h <- h[,{
+    X <- .SD
+    X$shprecut <- as.numeric(cut(shpre, quantile(shpre, seq(0,1,length=10)),include=TRUE))
+    X$shpoallcut <- as.numeric(cut(shpoall, quantile(shpre, seq(0,1,length=10)),include=TRUE))
+    X
+},by=version]
+
+m1 <- glm(actpo2 ~ version+shprecut, data=h, family='binomial')
+
+h[,pchange:=(shpoallcut-shprecut)>0]
+m2 <- glm(pchange ~ version+(shprecut), data=h[shprecut<=9,], family='binomial')
+```

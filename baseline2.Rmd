@@ -9,7 +9,7 @@ v2 <- versions[, {
     s1 <- .BY$date
     s2 <- .BY$date+6
     V <- .BY$version
-    list(j = d0[pcd >=s1 & pcd<=s2,][, list(v = min(version[date>=pcd & date<=(pcd+1)])) ,by=cidf][, sum(v<V)/.N*100])
+    list(j = d0[pcd >=s1 & pcd<=s2,][, list(v = version[1]) ,by=cidf][, sum(v<V)/.N*100])
 },by=list(version,date)]
 xmins <- round(range(v2$j),2)
 ```
@@ -24,9 +24,11 @@ mind that after a version is released between `r xmins[1]` and `r xmins[2]`  % o
 older versions (in the first week since profile creation).
 
 
-```{r makePlot,cache=TRUE}
-pl <- function(v,s1,main,cutOut=1,xaxs='pcd',xlab='Profile Creation Date'){
-    xyplot(get(v)  ~ get(xaxs), xlab=xlab
+```{r plotbase,cache=TRUE}
+
+pl <- function(v,s1,main,cutOut=1,xaxs='pcd',xlab='Profile Creation Date',xlim=NULL)
+{ 
+    u= xyplot(get(v)  ~ get(xaxs), xlab=xlab
          , ylab=''
          , type=c('l')
          , scale=list(x=list(tick.num=25,cex=0.6,rot=45,format='%Y-%m-%d'),
@@ -42,13 +44,16 @@ pl <- function(v,s1,main,cutOut=1,xaxs='pcd',xlab='Profile Creation Date'){
                   panel.abline(v=versions[i,date],lty=3,col='red')
               }
               panel.loess(x,y2,type='l',col='black',span=0.25,lwd=1.5)
-          },main=main)
+          },main=main
+          )
+   if(!is.null(xlim)) u <- update(u,xlim=xlim)
+   u
 }
-s1 <- d0[sh<=24 & pcd>='2016-08-08' & pcd<='2017-12-01' & date >=pcd  & date<=(pcd+6),]
 ```
 
 
-```{r retbase,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
+```{r makePlot,cache=TRUE,dependson=c('newOn'),fig.align='center',fig.width=8}
+s1 <-  d0[sh<=24 & pcd>='2016-08-08' & pcd<='2017-12-01' & date >=pcd  & date<=(pcd+6),]
 s11 <- s1[,{    list(s=any( sh>0 ))},by=list(pcd,cidf)][,list(s=mean(s)),by=pcd][order(pcd),]
 pl("s",s11,"First Week Retention")
 ```
@@ -97,20 +102,76 @@ s8 <- s8[pcd>='2017-08-01',]
 pl("s",s8,"Crash Rate (Definition 2)")
 ```
 
+
+### Second Week
+
+Retention and crash propensity  is only in the second week, everything else is
+cumulative till second week.
+
+```{r makePlot2,cache=TRUE,dependson=c('newOn'),fig.align='center',fig.width=8}
+s1aa <- d0[sh<=24 & pcd>='2016-08-08' & pcd<='2017-12-01' & date >=(pcd)  & date<=(pcd+13),]
+s11 <- s1aa[,{    list(s=any( sh[date>=(pcd+7) & date<=(pcd+13)] >0 ))},by=list(pcd,cidf)][,list(s=mean(s)),by=pcd][order(pcd),]
+pl("s",s11,"Second Week Retention")
+```
+
+```{r sessionbaesecond,cache=TRUE,dependson=c('newOn'),fig.align='center',fig.width=8}
+s1a <- d0[sh<=24 & pcd>='2016-08-08' & pcd<='2017-12-01' & date >=(pcd)  & date<=(pcd+13),]
+s2 <- s1a[,{    list(s=sum(sh)/.N)},by=list(pcd,cidf)][,list(s=mean(s)),by=pcd][order(pcd),]
+pl("s",s2,"Session Hours/Day/Profile")
+```
+
+
+```{r intensbasesecond,cache=TRUE,dependson=c('sessionbaesecond','newOn'),fig.align='center',fig.width=8}
+s3 <- s1a[,{    list(s=sum(ah,na.rm=TRUE)/(sum(sh,na.rm=TRUE)+C))},by=list(pcd,cidf)][,list(s=mean(s)),by=pcd][order(pcd),]
+pl("s",s3,"Intensity/Profile")
+```
+
+
+```{r tabsbasesecond,cache=TRUE,dependson=c('sessionbaesecond','newOn'),fig.align='center',fig.width=8}
+s4 <- s1a[,{    list(s=sum(tabsopened)/(sum(sh,na.rm=TRUE)+C))},by=list(pcd,cidf)][,list(s=mean(s)),by=pcd][order(pcd),]
+s4 <- s4[pcd>='2017-03-01',]
+pl("s",s4,"Tabs & Windows Opened/Hour/Profile",cut=0.995)
+```
+
+
+```{r urisbasesecond,cache=TRUE,dependson=c('sessionbaesecond','newOn'),fig.align='center',fig.width=8}
+s5 <- s1a[,{   list(s=sum(uris)/(sum(sh,na.rm=TRUE)+C))},by=list(pcd,cidf)][,list(s=mean(s)),by=pcd][order(pcd),]
+s5 <- s5[pcd>='2017-03-01',]
+pl("s",s5,"URIs  Opned/Hour/Profile",cut=0.995)
+```
+
+```{r crate0basesecond,cache=TRUE,dependson=c('makePlot2','newOn'),fig.align='center',fig.width=8}
+s7 <- s1aa[,{    list(s=any(cr[date>=(pcd+7) & date<=(pcd+13)]>0))},by=list(pcd,cidf)][,list(s=mean(s)),by=pcd][order(pcd),]
+s7 <- s7[pcd>='2017-08-01',]
+pl("s",s7,"# Profiles Crashing in Second Week")
+```
+
+```{r crate1basesecond,cache=TRUE,dependson=c('sessionbaesecond','newOn'),fig.align='center',fig.width=8}
+s8 <- s1a[,{    list(s=sum(crash)/sum(sh,na.rm=TRUE)*1000)},by=list(pcd)][order(pcd),]
+s8 <- s8[pcd>='2017-08-01',]
+pl("s",s8,"Crash Rate (Definition 2)")
+```
+
+
+
+
 ## For Existing profiles
 
-```{r baselineExist,eval=FALSE,cache=TRUE}
+### First Week
+
+Consider profiles created at least two weeks before a date and their typical
+behavior in a week as of that date. These are the baselines
+
+```{r baselineExist,eval=TRUE,cache=TRUE}
 d01 <- d0[date>='2017-01-01',d0[sh<=24 & pcd<=(.BY$date-13) & date>=(.BY$date) & date<=(.BY$date+6),
                                 list(sh=sum(sh,na.rm=TRUE)/.N,
                                      inten=sum(ah,na.rm=TRUE)/(sum(sh,na.rm=TRUE)+C),
                                      tabs=sum(tabsopened)/(sum(sh,na.rm=TRUE)+C),
                                      uris=sum(uris)/(sum(sh,na.rm=TRUE)+C),
-                                     search=sum(search)/(sum(sh,na.rm=TRUE)+C),
                                      crashed=any(cr>0)),by=cidf][, list(sh=mean(sh),
                                                                         inten=mean(inten),
                                                                         tabs=mean(tabs),
                                                                         uris=mean(uris),
-                                                                        search=mean(search),
                                                                         crashed=mean(crashed))]
          ,by=date]
 
@@ -142,10 +203,7 @@ e2 <- d01[,list(date=date,s=uris)][order(date),]
 pl("s",e2,"URIS visited/hr/Profile",xaxs='date',xlab='Date ',cut=0.995)
 ```
 
-```{r searchesbase2,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
-e2 <- d01[,list(date=date,s=search)][order(date),]
-pl("s",e2,"Searches made /hour/profile",xaxs='date',xlab='Date ',cut=0.995)
-```
+
 
 ```{r crasherbase2,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
 e2 <- d01[,list(date=date,s=crashed)][order(date),][date>='2017-08-01',]
@@ -154,5 +212,73 @@ pl("s",e2,"Proportion of Crashers",xaxs='date',xlab='Date ')
 
 ```{r crasherbase3,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
 e2 <- dcr[order(date),][date>='2017-08-01',]
-pl("s",e2,"CRash Rate (Definition 2)",xaxs='date',xlab='Date ',cut=0.995)
+pl("s",e2,"CRash Rate (Definition 2) crashes/1000hrs" ,xaxs='date',xlab='Date ',cut=0.995)
+```
+
+### Second Week
+
+Consider profiles created at least two weeks before a date and their typical
+behavior for two  week as of that date. These are the baselines. Retention and
+crash prop is only for second week but everything else is cumulative for two
+weeks.
+
+
+```{r baselineExist2,eval=TRUE,cache=TRUE}
+invisible({d0 <- d0[, ":="(dend1=date-13,dend2=date+13,dmid=date+7)]})
+d01w2 <- d0[date>='2017-01-01' & sh<=24,
+{
+    d1 <- dend1[1]; d2 <- dend2[1];d3=dmid[1]
+    XX <- .BY$date
+    x <- d0[pcd<=d1 & date>=XX & date<=d2,
+            list(sh=sum(sh,na.rm=TRUE)/.N,
+                 inten=sum(ah,na.rm=TRUE)/(sum(sh,na.rm=TRUE)+C),
+                 tabs=sum(tabsopened)/(sum(sh,na.rm=TRUE)+C),
+                 uris=sum(uris)/(sum(sh,na.rm=TRUE)+C),
+                 crt=sum(crash),
+                 ret=any(sh [date>=d3] >0), crashed=any(cr[date>=d3] >0))
+                ,by=cidf]
+    x[, list(sh=mean(sh), inten=mean(inten), tabs=mean(tabs), uris=mean(uris), ret=mean(ret),crash=mean(crash)
+           , crate =sum(crt)/sum(sh)*1000)]
+},by=date]
+save(d0, newonv,versions,exisd,FAC,d01,dcr,d01w2,file="~/tmp/snapshot.Rdata")
+```
+
+
+```{r retbase3,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
+e2 <- d01w2[,list(date=date,s=ret)][order(date),]
+pl("s",e2,"Retetion in 2nd week",xaxs='date',xlab='Date')
+```
+
+
+```{r sessionbase3,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
+ e2 <- d01w2[,list(date=date,s=sh)][order(date),]
+pl("s",e2,"Session  Hours/Day/Profile",xaxs='date',xlab='Date',cut=0.995)
+```
+
+
+```{r intenbasd3,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
+ e2 <- d01w2[,list(date=date,s=inten)][order(date),]
+pl("s",e2,"Intensity per /Profile",xaxs='date',xlab='Date ',cut=0.995)
+```
+
+```{r tabsbase3,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
+ e2 <- d01w2[,list(date=date,s=tabs)][order(date),]
+pl("s",e2,"Tabs + Windows Opened/ Hr/Profile",xaxs='date',xlab='Date ',cut=0.995)
+```
+
+```{r urisbase3,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
+ e2 <- d01w2[,list(date=date,s=uris)][order(date),]
+pl("s",e2,"URIS visited/hr/Profile",xaxs='date',xlab='Date ',cut=0.995)
+```
+
+
+
+```{r crasherbase21,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
+ e2 <- d01w2[,list(date=date,s=crash)][order(date),][date>='2017-08-01',]
+pl("s",e2,"Proportion of Crashers (2nd Week)",xaxs='date',xlab='Date ',cut=0.99)
+```
+
+```{r crasherbase4,cache=TRUE,dependson=c('makePlot','newOn'),fig.align='center',fig.width=8}
+ e2 <- d01w2[,list(date,s=crate)][order(date),][date>='2017-08-01',]
+pl("s",e2[s>=0,],"CRash Rate (Definition 2) crashes/1000hrs" ,xaxs='date',xlab='Date ',cut=0.995)
 ```

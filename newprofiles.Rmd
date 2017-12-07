@@ -122,14 +122,6 @@ tabdf <- mt("uris")
 tabdf[release>'2017-03-01',]
 ```
 
-## Searches
-
-Searches done per hour per profile
-
-```{r srchs, cache=TRUE,dependson='newonv'}
-options(width=1000)
-(srchdf <- mt('srch'))
-```
 
 
 
