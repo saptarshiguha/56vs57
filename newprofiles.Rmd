@@ -1,4 +1,4 @@
-# Studying New Profiles
+# New Profiles
 
 Recall we are working with a 0.1% sample. Very few of our figure will have actual counts.
 
@@ -27,7 +27,7 @@ Not using the definition that uses URIs since that doesnt exist prior to 2017.
 ```{r retention,cache=TRUE,dependson='newonv'}
 isn <- function(s,subcode=NA) if(is.null(s) || length(s)==0) subcode else s
 a1 <- newonv[,{
-    oneday <- isn(1*any((active[daysSince==0])),0)
+    oneday <- isn(1*any((active[daysSince==1])),0)
     week1 <- isn(1*any(active[daysSince %between% c(0,6)]),0)
     week2 <- isn(1*any(active[daysSince %between% c(7,13)]),0)
     week3 <- isn(1*any(active[daysSince %between% c(14,20)]),0)
@@ -37,7 +37,7 @@ a1 <- a1[,list(active=sum(active)*FAC) ,by=list(version,period)]
 a1 <- merge(a,a1,by='version')[,retention:=active/nprofiles][,][order(period,version),]
 a1 <- a1[period %in% c("oneday","week1","week2"),][,list(version,release,period,retention=retention*100)]
 a1 <- reshape(a1,dir='wide', v.names='retention',timevar='period',idvar=c('version','release'))
-a1
+a1 
 
 ```
 
@@ -139,8 +139,9 @@ experiencing a crash in a given time period.
 
 
 ```{r crashprop,cache=TRUE,dependson='newonv'}
+
 a4 <- newonv[,{
-    oneday <- isn(1*any((cr[daysSince==0])),0)
+    oneday <- isn(1*any((cr[daysSince==1])),0)
     week1 <- isn(1*any(cr[daysSince %between% c(0,6)]),0)
     week2 <- isn(1*any(cr[daysSince %between% c(7,13)]),0)
     week3 <- isn(1*any(cr[daysSince %between% c(14,20)]),0)
@@ -150,8 +151,9 @@ a4 <- a4[,list(crashq=sum(crashq)*FAC) ,by=list(version,period)]
 a4 <- merge(a,a4,by='version')[,crashprop:=crashq/nprofiles][,][order(period,version),]
 a4 <- a4[period %in% c("oneday","week1","week2"),][,list(version,release,period,crashprop=crashprop*100)]
 a4 <- reshape(a4,dir='wide', v.names='crashprop',timevar='period',idvar=c('version','release'))
-options(width=1000)
+options(width=1100 )
 a4
+
 ```
 
 ## Crash Rates

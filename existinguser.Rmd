@@ -1,41 +1,55 @@
 # Existing Users
 
 
-## First Two Weeks
+## Period of Study
 
 Once a profile updates to 57(in the first week of release), what does their
 subsequent two weeks look like?
+
+## Acquisition
 
 ```{r exis2retention, cache=TRUE}
 exisd[,list(RetentionSecondWeek=mean(actpo2)), by=list(date,version)][order(version),]
 ```
 
+## Session Length/Profile/Day
+
 ```{r exis2session, cache=TRUE}
 exisd[,list(AverageSessionLength=mean(shpoall/npoall)) , by=list(date,version)][order(version),]
 ```
+
+## Intensity/Profile
 
 ```{r exis2inten, cache=TRUE}
 exisd[,list(Intensity=mean(ahpoall/(C+shpoall))), by=list(date,version)][order(version),]
 ```
 
+## Tabs and Windows Opened
+
 ```{r exis2tabs, cache=TRUE}
 exisd[,list(TabsOpenedPerHour=mean(tabpoall/(C+shpoall))), by=list(date,version)][order(version),]
 ```
 
+## URIs visited
 
 ```{r exis2uri, cache=TRUE}
 exisd[,list(UriSVisitedPerHour=mean(uripoall/(C+shpoall))), by=list(date,version)][order(version),]
 ```
+
+## Crash Propensity
+
+Only for the second week.
 
 ```{r exis2crashd, cache=TRUE}
 exisd[,list(CrashPropensity=mean(crpoall)), by=list(date,version)][order(version),]
 ```
 
 
+## Crash Rates
+
 ```{r exis2crashd2, cache=TRUE}
 exisd[,list(CrashRateDefinition2=sum(crashpoall)/sum(shpoall)*1000), by=list(date,version)][order(version),]
 ```
-
 
 ## Lapsed Users
 
@@ -100,20 +114,60 @@ for the second we can
   changing i.e. my usage didnt change at all but i became a 'low user' because
   of an influx of higher usage profiles. We will assume this doesn't happen in
   small periods of time
-  
 
-```{r churn1,cache=TRUE
-h <- exisd[version %in% c(55,56),]
-h[ ,version:=factor(version)]
-h <- h[,{
-    X <- .SD
-    X$shprecut <- as.numeric(cut(shpre, quantile(shpre, seq(0,1,length=10)),include=TRUE))
-    X$shpoallcut <- as.numeric(cut(shpoall, quantile(shpre, seq(0,1,length=10)),include=TRUE))
-    X
-},by=version]
 
-m1 <- glm(actpo2 ~ version+shprecut, data=h, family='binomial')
+Before start  a model, we can see 
 
-h[,pchange:=(shpoallcut-shprecut)>0]
-m2 <- glm(pchange ~ version+(shprecut), data=h[shprecut<=9,], family='binomial')
+- partition everyone's  pre-version usage (the usage 2 weeks prior to update) into
+  10 percentiles
+- see how they migrate from bottom 40% to a bucket 4 percentiles
+  higher(e.g. from group 1 to group 4 or more)
+- compute the average across versions and see where 57 lies
+
+```{r churn1,cache=TRUE}
+invisible({
+    exisd2 <- exisd[version>=51,]
+    exisd2[,":="(
+        preCut = as.numeric(cut(shpre, quantile(shpre,seq(0,1,length=11)),include=TRUE)),
+        poallCut = as.numeric(cut(shpoall, quantile(shpre,seq(0,1,length=11)),include=TRUE))
+    ),by=list(version)]
+    ax <- exisd2[,  list(d=list(x=prop.table(table(preCut, poallCut),1))), by=version]
+    s=0
+    for(i in 1:nrow(ax)){
+        s <- s+ax[i,d][[1]]
+    }
+})
+```
+
+The average transition probabilities (percentage of pre usage percentile group
+moving to higher (the columns))
+```{r}
+(savg <- round(s/nrow(ax)*100,0))
+```
+
+In particular for profiles  in percentiles 1 to 4(which contribute to less than
+3% of usage), what % move 4 or more percentiles higher? Well on average (across
+different version updates) we have `sum(unlist(lapply(1:4, function(k) sum(savg[k, (k+4):10]))))`% and 
+given other versions, 57 looks typical
+
+```{r}
+ax[,{
+    son=round(d[[1]]*100,0)
+    list(upBy4=sum(unlist(lapply(1:4, function(k) sum(son[k, (k+4):10])))))
+} ,by=version][order(version)]
+```
+
+
+Does  profiles on 57 tend to move to higher percentiles after
+update?  We can a build a logistic model testing the indicator *did a low user
+profile, move to a higher percentile* after update?
+
+We'll use low usage group as the bottom 4 percentiles *'moving up'* is if they
+moved up by 4 percentiles . Looking at the output below, it seems  that none of
+the versions are remarkably different from each other.
+
+```{r  cache=TRUE}
+invisible({exisd2[, up:= (poallCut - preCut)>=4]})
+m2 <- glm(up ~ factor(version), data=exisd2[preCut<=4,], family='binomial')
+summary(m2)
 ```

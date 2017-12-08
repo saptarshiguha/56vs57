@@ -9,6 +9,18 @@ activity and the version they were on.
 
 ```{python eval=FALSE}
 
+
+import sys
+import datetime
+import random
+import subprocess
+
+from pyspark.sql import SparkSession
+spark = SparkSession.builder.getOrCreate()
+ms = spark.read.option("mergeSchema", "true").\
+     parquet("s3://telemetry-parquet/main_summary/v4/")
+ms.createOrReplaceTempView('ms')
+
 st= """
 SELECT
 client_id as cid,
@@ -31,7 +43,6 @@ and app_name = 'Firefox'
 and substr(subsession_start_date,1,10) >= '{minsubsession}' and substr(subsession_start_date,1,10)<='{maxsubsession}'
 and submission_date_s3 >= '{minsubsession}' and submission_date_s3 <= '{maxsubmission}'
 and sample_id = '23'
-and crc32(encode(client_id, 'UTF-8')) % 1000 < 100
 and subsession_length>=0
 and subsession_length<=86400
 group by 1,2,3,4
@@ -43,11 +54,20 @@ group by 1,2,3,4
 ut=spark.sql(st)
 ut.createOrReplaceTempView ("ut")
 
+
 spark.sql("select count(*), count(distinct(cid)) from ut").collect()
-import subprocess
-O = "s3://mozilla-metrics/user/sguha/tmp/snapshot"
+
+## Full blown parquet file
+O = "s3://mozilla-metrics/user/sguha/tmp/snapshotForR"
 subprocess.call(["aws", "s3", "rm", "--recursive", O])
-write = pyspark.sql.DataFrameWriter(ut.coalesce(1))
+write=pyspark.sql.DataFrameWriter(ut)
+write.parquet("s3://mozilla-metrics/user/sguha/tmp/snapshotForR",mode='overwrite')
+
+## Small CSV File
+O = "s3://mozilla-metrics/user/sguha/tmp/snapshot05pct"
+ut2=spark.sql(""" select * from ut where crc32(encode(cid, 'UTF-8')) % 1000 < 500""")
+ut2.createOrReplaceTempView("ut2")
+write = pyspark.sql.DataFrameWriter(ut2.coalesce(1))
 write.csv(path=O ,mode='overwrite',compression='none',sep=',',nullValue='NA',header=True)
 
 ```
@@ -58,7 +78,7 @@ write.csv(path=O ,mode='overwrite',compression='none',sep=',',nullValue='NA',hea
 ```{r include=FALSE}
 X=FALSE
 C <- 1/60
-FAC <- 1000
+FAC <- 500
 ```
 
 I've found studying data using data tables and R is so much easier than creating
@@ -68,14 +88,17 @@ these large scale analyses.
 
 *Download the data from S3*, and do some simple modifications. 
 
-```{r getdata,eval=TRUE,cache=TRUE}
+```{r getdata0,eval=FALSE,cache=TRUE}
 library(data.table)
 system("rm -rf /tmp/x")
-system(sprintf("aws s3 sync s3://mozilla-metrics/user/sguha/tmp/snapshot/ /tmp/x"))
+system(sprintf("aws s3 sync s3://mozilla-metrics/user/sguha/tmp/snapshot1pct/ /tmp/x"))
+```
+
+```{r getdata,eval=TRUE,cache=TRUE,dependson='getdata0'}
 d0 <- fread(list.files("/tmp/x/",full=TRUE,pattern='*.csv'),
             colClasses=c("character","date","date","character",
                          "numeric","numeric","numeric","numeric",
-                         "numeric","numeric","numeric","numeric","numeric"
+                         "numeric","numeric","numeric","numeric"
                          ))
 d0 <- d0[pcd>='2016-01-01' & date>='2016-01-01' & pcd <='2018-12-31' & date<='2018-12-31',]
 d0 <- d0[!is.na(pcd) & !is.na(date),]
@@ -141,7 +164,7 @@ newonv <- lapply(versions$version,function(v){
 newonv <- rbindlist(newonv)
 ```
 
-## Existing Users updating to a version
+## Existing Users
 
 For this data set, 
 
@@ -216,5 +239,5 @@ exisd <- versions[,{
 
 
 ```{r saveData,cache=TRUE,dependsOn='newOn'}
-save(d0, newonv,versions,exisd,FAC, file="~/tmp/snapshot.Rdata")
+save(d0, newonv,versions,exisd,FAC, file="~/tmp/snapshot1pct.Rdata")
 ```

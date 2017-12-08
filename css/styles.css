@@ -75,6 +75,7 @@ h1.title {
 .book .book-body .navigation {
   min-width: 4%;
 }
-.book .book-body .page-wrapper .page-inner {
-  max-width: 1200px;
-}
+
+/* .book .book-body .page-wrapper .page-inner {
+   max-width: 900px;
+   } */
